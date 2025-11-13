@@ -1,4 +1,4 @@
-# Cgd Manager Tool
+# 7.4  Cgd Manager Tool
 This tool is useful to modify the `cgd.dip` file of MicroVolts/ToyBattles, which contains very important information like:
 - Server IPs, channel IDs
 - Items, Shop Items, Capsules
