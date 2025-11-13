@@ -90,18 +90,15 @@ Example:
 ```
 
 ## 7.1.3 Using the updater
-Everything mentioned above is almost automatically done through the `updater.py` utility, that you can find inside `Client/updater.py`.
+Everything mentioned above is almost automatically done through the `updater.py` utility, that you can find inside `Tools/updater.py`.
 You will need to install all the necessary packages for Python.
 
 ### Usage / Command line arguments
-```py
---patch-ini    Path to your current patch.ini
---new-files    Directory containing updated files
---game-root    Root directory of the game installation
---output       Where to save the update package
-```
+Just open a terminal, `cd <yourPathToUpdater>`, and then `python updater.py`. This will open a visual tool. 
 
-### What the script does
+To know what each field requires, just hover over it with your mouse and a tooltip should appear.
+
+### What the tool does
 1. Reads the current version from patch.ini
 2. Generates the next version number (increments last digit)
 3. Creates a new version folder in the output directory
@@ -110,21 +107,6 @@ You will need to install all the necessary packages for Python.
   - .cab file containing all changed files
   - .xml manifest with file checksums
 
-### Example usage
-```py
-python updater.py \
-    --patch-ini current/patch.ini \
-    --new-files path/to/updated/files \
-    --game-root "C:\Microvolts" \
-    --output update_packages
-```
-The output will be similar to:
-```py
-[✓] Done! Output written to: update_packages
-    CAB: update_packages/ENG_7.0.0.3/microvolts-ENG_7.0.0.2-ENG_7.0.0.3.cab
-    XML: update_packages/ENG_7.0.0.3/microvolts-ENG_7.0.0.2-ENG_7.0.0.3.xml
-    Patch.ini: update_packages/patch.ini
-```
 
 ### Deployment instructions
 After running the updater:
