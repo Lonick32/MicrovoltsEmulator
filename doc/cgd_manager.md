@@ -30,12 +30,11 @@ Of course modifying cdb files through tools like HxD is possible, but it's very 
 - Python 3.12
 - .NET SDK (>= 10.0)
 
-### Installation
+### Download 
 1) Open a terminal and clone this repository if you haven't already.
 2) `cd <ClonedRepositoryRootPath>`, next `cd Tools/CgdManager`
 
 Then:
-
 ### Compile and generate DipMaker.exe
 1) `dotnet new console -n temp_build --output temp_build`
 2) `del temp_build\Program.cs`
