@@ -102,7 +102,7 @@ class CgdEditor(QMainWindow):
         self.layout = QVBoxLayout(self.centralWidget)
 
         self.comboBox = QComboBox()
-        self.comboBox.addItems(self.cgdManager.cdbs.keys())
+        self.comboBox.addItems(sorted(self.cgdManager.cdbs.keys()))
         self.comboBox.currentTextChanged.connect(self.switchCdb)
         self.layout.addWidget(self.comboBox)
 

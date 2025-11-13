@@ -132,14 +132,10 @@ class CgdManager:
         os.makedirs(json_output_dir, exist_ok=True)
         os.makedirs(cdb_output_dir, exist_ok=True)
 
-        json_path = os.path.join(json_output_dir, cdb.fileName + ".json")
-        print(f"[EXPORT] JSON: {json_path}")
         if log_callback:
             log_callback(f"Exporting '{cdb.fileName}' to JSON...")
         cdb.toJson(json_output_dir)
 
-        cdb_path = os.path.join(cdb_output_dir, cdb.fileName + ".cdb")
-        print(f"[EXPORT] CDB: {cdb_path}")
         if log_callback:
             log_callback(f"Exporting '{cdb.fileName}' to CDB...")
         cdb.toCdb(cdb_output_dir)

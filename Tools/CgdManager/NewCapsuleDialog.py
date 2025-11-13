@@ -35,6 +35,9 @@ class CreateCapsuleDialog(QDialog):
         self.titleicon_input.setRange(0, 999999999)
         layout.addRow("Title iconID (ii_id from iconsinfo):", self.titleicon_input)
 
+        self.listicon_input.setValue(91301126)
+        self.titleicon_input.setValue(91301132)
+
         self.desc_input = QTextEdit()
         self.desc_input.setMaximumHeight(120)
         layout.addRow("Description:", self.desc_input)

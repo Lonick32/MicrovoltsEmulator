@@ -1,9 +1,8 @@
 from functools import partial
 from PySide6.QtWidgets import (
     QWidget, QListWidget, QListWidgetItem, QLabel, QMessageBox,
-    QHBoxLayout, QVBoxLayout, QScrollArea, QPushButton, QInputDialog
+    QHBoxLayout, QVBoxLayout, QScrollArea, QPushButton, QInputDialog, QDialog
 )
-from PySide6.QtGui import QPixmap
 from PySide6.QtCore import Qt
 from IconLoader import IconLoaderThread, defaultPixmap
 from CapsuleAddItem import AddItemDialog, AddFixedItems
@@ -49,7 +48,7 @@ class CapsuleManager(QWidget):
         self.deleteCapsuleButton.clicked.connect(self.deleteCapsule)
         buttons_layout.addWidget(self.deleteCapsuleButton)
         self.capsuleList.itemClicked.connect(self.onCapsuleSelected)
-        self.updateCapsuleButton = QPushButton("Update Capsule")
+        self.updateCapsuleButton = QPushButton("Edit Capsule")
         buttons_layout.addWidget(self.updateCapsuleButton)
         self.updateCapsuleButton.setEnabled(False)
         self.updateCapsuleButton.clicked.connect(self.updateCapsule)
@@ -160,17 +159,19 @@ class CapsuleManager(QWidget):
             # rare items
             gi_type = self.getFieldValue(pkg_entry, "gi_type")
             if gi_type == 1:
-                container.setStyleSheet("background-color: rgb(255, 255, 200);") 
+                container.setStyleSheet("background-color: rgb(255, 255, 200); color: black;")
             else:
                 container.setStyleSheet("") 
 
             icon_lbl = QLabel()
             icon_lbl.setObjectName("icon")
+            icon_lbl.setStyleSheet("color: black;")
             icon_lbl.setFixedSize(64, 64)
             icon_lbl.setProperty("icon_id", icon_id)
             layout.addWidget(icon_lbl)
 
             text_lbl = QLabel(f"{item_name} (ItemID: {item_id})")
+            text_lbl.text
             text_lbl.setObjectName("text")
             layout.addWidget(text_lbl)
 
@@ -375,12 +376,20 @@ class CapsuleManager(QWidget):
 
     def addNewCapsule(self):
         dialog = CreateCapsuleDialog(self)
-        if not dialog.exec():
+        dialog.setModal(False)  
+        dialog.show()
+
+        dialog.finished.connect(lambda result, dlg=dialog: self.onCapsuleDialogFinished(result, dlg))
+
+
+    def onCapsuleDialogFinished(self, result, dialog):
+        if result != QDialog.DialogCode.Accepted:
+            dialog.deleteLater()
             return
 
         values = dialog.getValues()
-
         missing = []
+
         if not values["gi_name"]:
             missing.append("Name (gi_name)")
         if values["gi_listicon"] == 0:
@@ -412,7 +421,6 @@ class CapsuleManager(QWidget):
             return
 
         max_gi_id = 0
-        last_entry_index = -1
         existing_infoids = set()
         found_gachaponinfo = False
         for cdb_name, cdb in self.cgdManager.cdbs.items():
@@ -422,7 +430,6 @@ class CapsuleManager(QWidget):
                     entry_gi_id = self.getFieldValue(entry, "gi_id", 0)
                     if entry_gi_id > max_gi_id:
                         max_gi_id = entry_gi_id
-                        last_entry_index = i
                     entry_infoid = self.getFieldValue(entry, "gi_infoid", None)
                     if entry_infoid is not None:
                         existing_infoids.add(entry_infoid)
@@ -432,8 +439,6 @@ class CapsuleManager(QWidget):
             return
 
         new_gi_id = max_gi_id
-        old_last_gi_id = new_gi_id + 1
-
         new_gi_infoid = None
         for _ in range(10000):
             candidate = random.randint(100000, 999999)
@@ -466,12 +471,14 @@ class CapsuleManager(QWidget):
                 try:
                     cdb.entries[-2], cdb.entries[-1] = cdb.entries[-1], cdb.entries[-2]
                     self.cgdManager.saveCdbOutputs(cdb)
-                except Exception as e:
+                except Exception:
                     QMessageBox.information(self, "Warning", "New capsule added, but couldn't swap last two entries (check manually)")
             QMessageBox.information(self, "Success", "New capsule added successfully")
             self.loadCapsules()
         else:
             QMessageBox.critical(self, "Error", result.get("error", "Failed to add new capsule."))
+
+        dialog.deleteLater()  
 
 
     def onCapsuleSelected(self, capsule_item):
@@ -481,7 +488,6 @@ class CapsuleManager(QWidget):
         self.addFixedItemsButton.setEnabled(True)
         self.updateCapsuleButton.setEnabled(True)
         self.showCapsuleItems(capsule_item)
-
 
     def updateCapsule(self):
         current_capsule = self.capsuleList.currentItem()
@@ -502,7 +508,15 @@ class CapsuleManager(QWidget):
         }
 
         dialog = CreateCapsuleDialog(self, prefill=current_values)
-        if not dialog.exec():
+        dialog.setModal(False)
+        dialog.show()
+
+        dialog.finished.connect(lambda result, dlg=dialog, cap_entry=capsule_entry: 
+            self.onCapsuleUpdateFinished(result, dlg, cap_entry))
+        
+    def onCapsuleUpdateFinished(self, result, dialog, capsule_entry):
+        if result != QDialog.DialogCode.Accepted:
+            dialog.deleteLater()
             return
 
         values = dialog.getValues()
@@ -551,6 +565,7 @@ class CapsuleManager(QWidget):
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to update capsule:\n{e}")
 
+        dialog.deleteLater()
 
     def deleteCapsule(self):
         current_capsule = self.capsuleList.currentItem()
