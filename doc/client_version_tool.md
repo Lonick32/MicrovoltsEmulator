@@ -11,7 +11,7 @@ You will need to use **the same client version in the setup file**. For example,
 This will let the server know what the correct client version is, and it will only let players who have the correct client version join the server itself.
 
 ### Tool information & usage
-The tool can be found inside `Client/VersionPatcher.cpp`. All you need is to compile it and obtain the executable.
+The tool can be found inside `Tools/Client/VersionPatcher.cpp`. All you need is to compile it and obtain the executable.
 
 Once you have the executable ready, start it and it will prompt you to enter the full path where your game client (`Microvolts.exe` or `ToyBattles.exe`) is, and the new version you want it to use.
 
