@@ -59,8 +59,8 @@ This utility modifies the encrypted password stored in the Microvolts client exe
 Requires:
 - C++17 compiler
 - Windows SDK (for binary manipulation)
-- `Crypt.h` (can be found inside the `Client` folder)
-- The utility can be found inside `Client/CgdPasswordUpdater.cpp`
+- `Crypt.h` (can be found inside the `Tools/Client` folder)
+- The utility can be found inside `Tools/Client/CgdPasswordUpdater.cpp`
 
 
 ## Next
