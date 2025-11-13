@@ -64,4 +64,4 @@ Requires:
 
 
 ## Next
-[8.1 How to create bug reports via GitHub Issues](https://github.com/SoWeBegin/MicrovoltsEmulator/blob/mv1.1_2.0/doc/reporting_issues.md)
+[7.4 CGD Archive Manager Tool](https://github.com/SoWeBegin/ToyBattlesHQ/blob/toybattles_mvsurge/doc/cgd_manager.md)
