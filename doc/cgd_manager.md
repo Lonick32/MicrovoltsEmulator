@@ -75,4 +75,6 @@ In the main window, you can simply select the file you want to edit, and then ed
 The CapsuleManager makes it really easy to edit existing capsules, remove them, add new ones, add new items, remove existing items, and so on.
   
 
+## Next
+[8.1 How to create bug reports via GitHub Issues](https://github.com/SoWeBegin/MicrovoltsEmulator/blob/mv1.1_2.0/doc/reporting_issues.md)
 
