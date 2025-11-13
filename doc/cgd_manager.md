@@ -30,9 +30,9 @@ Of course modifying cdb files through tools like HxD is possible, but it's very 
 - Python 3.12
 - .NET SDK (>= 10.0)
 
-Open a terminal and move onto your CgdManager folder:
-1) Clone this repository.
-2) Open a terminal and `cd <ClonedRepositoryRootPath>`, next `cd Tools/CgdManager`
+### Installation
+1) Open a terminal and clone this repository if you haven't already.
+2) `cd <ClonedRepositoryRootPath>`, next `cd Tools/CgdManager`
 
 Then:
 
