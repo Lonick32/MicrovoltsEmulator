@@ -91,7 +91,9 @@ Example:
 
 ## 7.1.3 Using the updater
 Everything mentioned above is almost automatically done through the `updater.py` utility, that you can find inside `Tools/updater.py`.
-You will need to install all the necessary packages for Python.
+You will need to install all the necessary packages for Python. 
+
+The only **Requirement** is having Python >= 3.12 installed on your machine.
 
 ### Usage / Command line arguments
 Just open a terminal, `cd <yourPathToUpdater>`, and then `python updater.py`. This will open a visual tool. 
