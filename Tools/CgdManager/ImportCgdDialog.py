@@ -1,4 +1,5 @@
 import os
+import json
 from functools import partial
 from CgdParser import CgdManager
 from CgdManager import CgdEditor
@@ -17,6 +18,24 @@ from PySide6.QtWidgets import (
     QMessageBox,
 )
 from PySide6.QtCore import QObject, QThread, Signal, Slot
+
+SETTINGS_FILE = os.path.join(os.path.expanduser("~"), ".cgd_importer_settings.json")
+
+def load_settings():
+    if os.path.exists(SETTINGS_FILE):
+        try:
+            with open(SETTINGS_FILE, "r") as f:
+                return json.load(f)
+        except:
+            return {}
+    return {}
+
+def save_settings(data):
+    try:
+        with open(SETTINGS_FILE, "w") as f:
+            json.dump(data, f)
+    except:
+        pass
 
 class ParserWorker(QObject):
     logSignal = Signal(str)
@@ -40,7 +59,6 @@ class ParserWorker(QObject):
             result = {"success": False, "error": f"Unknown import mode: {self.mode}"}
         self.finishedSignal.emit(result)
 
-
 class ImportCgdDialog(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -48,12 +66,12 @@ class ImportCgdDialog(QMainWindow):
         self.index = 0
         self.cgdManager = any
         self.iconFolder = ""
+        self.settings = load_settings()
 
         main_layout = QVBoxLayout()
 
         self.comboBox = QComboBox()
         self.comboBox.addItems(["cgd.dip archive", "select existing folder (must contain cdbs and jsons subfolders)"])
-        self.comboBox.currentIndexChanged.connect(self.index_changed)
         main_layout.addWidget(self.comboBox)
 
         self.passwordTextbox = QLineEdit()
@@ -103,6 +121,28 @@ class ImportCgdDialog(QMainWindow):
         self.setMinimumHeight(550)
         self.setMinimumWidth(600)
 
+        self.restoreSavedState()
+        self.comboBox.currentIndexChanged.connect(self.index_changed)
+        self.index_changed(self.comboBox.currentIndex())
+
+    def restoreSavedState(self):
+        mode = self.settings.get("mode", 0)
+        self.comboBox.setCurrentIndex(mode)
+        self.pathTextbox.setText(self.settings.get("input_path", ""))
+        self.passwordTextbox.setText(self.settings.get("password", ""))
+        self.iconTextbox.setText(self.settings.get("icon_path", ""))
+        self.outputPathbox.setText(self.settings.get("output_path", ""))
+
+    def saveCurrentState(self):
+        data = {
+            "mode": self.comboBox.currentIndex(),
+            "input_path": self.pathTextbox.text().strip(),
+            "password": self.passwordTextbox.text().strip(),
+            "icon_path": self.iconTextbox.text().strip(),
+            "output_path": self.outputPathbox.text().strip()
+        }
+        save_settings(data)
+
     def selectInputPath(self, targetLineEdit):
         file_path = ""
         if self.index == 0:
@@ -111,20 +151,23 @@ class ImportCgdDialog(QMainWindow):
                 "All Files (*)"
             )
         else:
-             file_path = QFileDialog.getExistingDirectory(self, "Select Directory")
+            file_path = QFileDialog.getExistingDirectory(self, "Select Directory")
         if file_path:
             targetLineEdit.setText(file_path)
+            self.saveCurrentState()
 
     def index_changed(self, index):
-        self.passwordTextbox.setVisible(index == 0)
-        self.outputPathbox.setVisible(False)
-        self.btnBrowseOutput.setVisible(False)
         self.index = index
+        self.passwordTextbox.setVisible(index == 0)
+        self.outputPathbox.setVisible(index == 0)
+        self.btnBrowseOutput.setVisible(index == 0)
+        self.saveCurrentState()
 
     def selectDirectory(self, targetLineEdit):
         path = QFileDialog.getExistingDirectory(self, "Select Directory")
         if path:
             targetLineEdit.setText(path)
+            self.saveCurrentState()
 
     def startImport(self):
         idx = self.comboBox.currentIndex()
@@ -158,6 +201,8 @@ class ImportCgdDialog(QMainWindow):
             self.cgdManager.json_dir = os.path.join(path, "jsons")
             self.cgdManager.cdb_dir = os.path.join(path, "cdbs")
 
+        self.saveCurrentState()
+
         self.worker = ParserWorker(self.cgdManager, path, password, mode)
         self.thread = QThread()
         self.worker.moveToThread(self.thread)
@@ -165,7 +210,6 @@ class ImportCgdDialog(QMainWindow):
         self.worker.finishedSignal.connect(self.importFinished)
         self.thread.started.connect(self.worker.run)
         self.thread.start()
-
 
     def importFinished(self, result):
         if result["success"]:

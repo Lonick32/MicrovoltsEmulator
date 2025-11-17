@@ -249,6 +249,25 @@ class CapsuleManager(QWidget):
         cdb.entries.sort(key=lambda entry: (-self.getFieldValue(entry, "gi_type", 0), self.getFieldValue(entry, "gi_id", 0)))
         self.cgdManager.saveCdbOutputs(cdb)
 
+    def sortCdbByKey(self, cdb_name: str, key: str, reverse: bool = False, start: int = 0):
+        cdb = self.cgdManager.cdbs.get(cdb_name)
+        if not cdb:
+            return
+
+        cdb.entries.sort(key=lambda entry: self.getFieldValue(entry, key, 0), reverse=reverse)
+        if key == "gi_id":
+            for idx, entry in enumerate(cdb.entries, start=start): 
+                ts_index = cdb.keys.index("gi_id")
+                ts = cdb.typeSizes[ts_index]
+                if ts in (2,3,4):
+                    entry[ts_index].value = idx
+                elif ts == 1:
+                    entry[ts_index].value = bool(idx)
+                else:
+                    entry[ts_index].value = str(idx)
+
+        self.cgdManager.saveCdbOutputs(cdb)
+
     def addItemToCapsuleImpl(self, capsule_entry, new_item_id, gi_type):
         if not capsule_entry:
             raise ValueError("capsule_entry NOT provided")
@@ -381,7 +400,6 @@ class CapsuleManager(QWidget):
 
         dialog.finished.connect(lambda result, dlg=dialog: self.onCapsuleDialogFinished(result, dlg))
 
-
     def onCapsuleDialogFinished(self, result, dialog):
         if result != QDialog.DialogCode.Accepted:
             dialog.deleteLater()
@@ -423,10 +441,11 @@ class CapsuleManager(QWidget):
         max_gi_id = 0
         existing_infoids = set()
         found_gachaponinfo = False
+
         for cdb_name, cdb in self.cgdManager.cdbs.items():
             if "gachaponinfo" in cdb_name.lower():
                 found_gachaponinfo = True
-                for i, entry in enumerate(cdb.entries):
+                for entry in cdb.entries:
                     entry_gi_id = self.getFieldValue(entry, "gi_id", 0)
                     if entry_gi_id > max_gi_id:
                         max_gi_id = entry_gi_id
@@ -438,7 +457,8 @@ class CapsuleManager(QWidget):
             QMessageBox.critical(self, "Error", "No 'gachaponinfo' CDB found in loaded files")
             return
 
-        new_gi_id = max_gi_id
+        new_gi_id = max_gi_id # + 1 unnecessary since original last capsule still remains last
+
         new_gi_infoid = None
         for _ in range(10000):
             candidate = random.randint(100000, 999999)
@@ -467,18 +487,24 @@ class CapsuleManager(QWidget):
 
         if result.get("success"):
             cdb = self.cgdManager.cdbs.get("gachaponinfo")
+
             if cdb and len(cdb.entries) >= 2:
-                try:
-                    cdb.entries[-2], cdb.entries[-1] = cdb.entries[-1], cdb.entries[-2]
-                    self.cgdManager.saveCdbOutputs(cdb)
-                except Exception:
-                    QMessageBox.information(self, "Warning", "New capsule added, but couldn't swap last two entries (check manually)")
+                original_last = cdb.entries[-2]
+                updated_last_id = new_gi_id + 1
+                for field in original_last:
+                    if field.key == "gi_id":
+                        field.value = updated_last_id
+                        break
+                cdb.entries[-2], cdb.entries[-1] = cdb.entries[-1], cdb.entries[-2]
+                self.cgdManager.saveCdbOutputs(cdb)
+
             QMessageBox.information(self, "Success", "New capsule added successfully")
             self.loadCapsules()
         else:
             QMessageBox.critical(self, "Error", result.get("error", "Failed to add new capsule."))
 
-        dialog.deleteLater()  
+        dialog.deleteLater()
+
 
 
     def onCapsuleSelected(self, capsule_item):
@@ -577,19 +603,28 @@ class CapsuleManager(QWidget):
         gi_infoid = self.getFieldValue(capsule_entry, "gi_infoid")
         gi_name = self.getFieldValue(capsule_entry, "gi_name")
 
+        gachaponinfo_cdb = next(
+            (n for n in self.cgdManager.cdbs if "gachaponinfo" in n.lower()), None
+        )
+        if not gachaponinfo_cdb:
+            QMessageBox.critical(self, "Error", "gachaponinfo CDB not found.")
+            return
+
+        last_entry = self.cgdManager.cdbs[gachaponinfo_cdb].entries[-1]
+        if capsule_entry == last_entry:
+            QMessageBox.warning(
+                self, "Cannot Delete",
+                "The last special capsule is needed for lucky spins to work.\n"
+                "You can't delete this capsule, otherwise lucky spins won't work properly anymore!"
+            )
+            return
+
         confirm = QMessageBox.question(
             self, "Confirm Delete",
             f"Are you sure you want to delete capsule '{gi_name}' and all its items?",
             QMessageBox.Yes | QMessageBox.No
         )
         if confirm != QMessageBox.Yes:
-            return
-
-        gachaponinfo_cdb = next(
-            (n for n in self.cgdManager.cdbs if "gachaponinfo" in n.lower()), None
-        )
-        if not gachaponinfo_cdb:
-            QMessageBox.critical(self, "Error", "gachaponinfo CDB not found.")
             return
 
         gi_index = self.cgdManager.cdbs[gachaponinfo_cdb].entries.index(capsule_entry)
@@ -612,6 +647,7 @@ class CapsuleManager(QWidget):
                         )
 
         if result_info.get("success"):
+            self.sortCdbByKey(gachaponinfo_cdb, "gi_id")
             QMessageBox.information(
                 self, "Deleted",
                 f"Capsule '{gi_name}' deleted successfully.\nRemoved {deleted_count} related items."

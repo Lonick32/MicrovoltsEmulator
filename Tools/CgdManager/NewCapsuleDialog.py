@@ -59,10 +59,13 @@ class CreateCapsuleDialog(QDialog):
     def _apply_default_price_for_type(self, idx):
         if idx == 0:
             self.price_input.setValue(1)
+            self.lucky_input.setValue(40)
         elif idx == 1:
             self.price_input.setValue(990)
+            self.lucky_input.setValue(60)
         elif idx == 2:
             self.price_input.setValue(3990)
+            self.lucky_input.setValue(15)
 
     def _load_prefill(self, prefill):
         self.name_input.setText(str(prefill.get("gi_name", "")))

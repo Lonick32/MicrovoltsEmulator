@@ -1,83 +1,16 @@
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QInputDialog, QComboBox,
-    QPushButton, QLabel, QLineEdit, QMessageBox, QScrollArea,
-    QMenuBar, QDialog, QDialogButtonBox, QFormLayout, QTableWidget, QTableWidgetItem
+    QPushButton, QMessageBox,
+    QMenuBar, QDialog, QLineEdit, QAbstractItemView, QHBoxLayout,
+    QTableView
 )
 from PySide6.QtGui import QAction
 from PySide6.QtCore import Qt
-from dataclasses import dataclass
-from typing import Any
 from CapsuleEditor import CapsuleManager
 import os
-from functools import partial
-
-
-@dataclass
-class EntryDataType:
-    key: str
-    typeSize: int
-    value: Any
-
-class NewEntryDialog(QDialog):
-    def __init__(self, schema_fields, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle("Add New Entry")
-        self.resize(500, 600)
-        self.setModal(True)
-
-        main_layout = QVBoxLayout(self)
-
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        main_layout.addWidget(scroll)
-
-        scroll_content = QWidget()
-        scroll_layout = QFormLayout(scroll_content)
-        scroll.setWidget(scroll_content)
-
-        self.editors = {}
-        self.schema_fields = schema_fields
-        for field in schema_fields:
-            editor = QLineEdit()
-            scroll_layout.addRow(QLabel(field.key), editor)
-            self.editors[field.key] = editor
-
-        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
-        buttons.accepted.connect(self.validateAndAccept)
-        buttons.rejected.connect(self.reject)
-        main_layout.addWidget(buttons)
-
-        self.values = None
-
-    def validateAndAccept(self):
-        validated = []
-        for field in self.schema_fields:
-            key = field.key
-            ts = field.typeSize
-            text = self.editors[key].text().strip()
-            try:
-                if ts == 1:
-                    if text.lower() in ("1","true","yes"):
-                        val = True
-                    elif text.lower() in ("0","false","no"):
-                        val = False
-                    else:
-                        raise TypeError(f"Key '{key}' expects boolean value")
-                elif ts in (2,3,4):
-                    val = int(text)
-                else:
-                    if text.isdigit():
-                        raise TypeError(f"Key '{key}' expects string value")
-                    val = text
-                validated.append(EntryDataType(key, ts, val))
-            except Exception as e:
-                QMessageBox.warning(self, "Invalid value", f"{e}")
-                return
-        self.values = validated
-        self.accept()
-
-    def getValues(self):
-        return self.values
+from AddNewDialog import EntryDataType, NewEntryDialog
+from EditSettingsDialog import SettingsDialog
+from CgdTableModel import CdbTableModel
 
 class CgdEditor(QMainWindow):
     def __init__(self, cgdManager):
@@ -85,118 +18,66 @@ class CgdEditor(QMainWindow):
         self.cgdManager = cgdManager
         self.setWindowTitle("CGD Editor - ToyBattlesHQ")
         self.resize(1200, 700)
-
         self.menuBar = QMenuBar()
-
-        fileMenu = self.menuBar.addMenu("More options")
+        self.setMenuBar(self.menuBar)
+        fileMenu = self.menuBar.addMenu("File")
         exportAction = QAction("Export cgd.dip", self)
         exportAction.triggered.connect(self.exportCgdDip)
         fileMenu.addAction(exportAction)
+        settingsAction = QAction("Settings", self)
+        settingsAction.triggered.connect(self.openSettings)
+        fileMenu.addAction(settingsAction)
+        managersMenu = self.menuBar.addMenu("Managers")
         capsuleManagerAction = QAction("Capsule Manager", self)
         capsuleManagerAction.triggered.connect(self.openCapsuleManager)
-        fileMenu.addAction(capsuleManagerAction)
-        self.setMenuBar(self.menuBar)
-
+        managersMenu.addAction(capsuleManagerAction)
         self.centralWidget = QWidget()
         self.setCentralWidget(self.centralWidget)
         self.layout = QVBoxLayout(self.centralWidget)
-
         self.comboBox = QComboBox()
         self.comboBox.addItems(sorted(self.cgdManager.cdbs.keys()))
         self.comboBox.currentTextChanged.connect(self.switchCdb)
         self.layout.addWidget(self.comboBox)
-
-        self.tableWidget = QTableWidget()
+        self.tableWidget = QTableView()
         self.layout.addWidget(self.tableWidget)
-
         self.addEntryBtn = QPushButton("Add New Entry")
         self.addEntryBtn.clicked.connect(self.addEntry)
         self.layout.addWidget(self.addEntryBtn)
-
+        search_layout = QHBoxLayout()
+        self.searchKeyTextbox = QLineEdit()
+        self.searchKeyTextbox.setPlaceholderText("Enter key to search (column name)")
+        search_layout.addWidget(self.searchKeyTextbox)
+        self.searchValueTextbox = QLineEdit()
+        self.searchValueTextbox.setPlaceholderText("Enter value to search")
+        search_layout.addWidget(self.searchValueTextbox)
+        searchBtn = QPushButton("Search")
+        searchBtn.clicked.connect(self.searchValue)
+        search_layout.addWidget(searchBtn)
+        self.layout.addLayout(search_layout)
         self.currentCdbName = self.comboBox.currentText()
         self.loadCdbTable(self.currentCdbName)
 
     def loadCdbTable(self, cdbName):
         cdb = self.cgdManager.cdbs[cdbName]
-        keys = cdb.keys
-        try:
-            self.tableWidget.itemChanged.disconnect()
-        except TypeError:
-            pass
+        self.model = CdbTableModel(cdb, self.cgdManager)
+        self.tableWidget.setModel(self.model)
+        self.tableWidget.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.tableWidget.clicked.connect(self.onCellClicked)
 
-        self.tableWidget.clear()
-        self.tableWidget.setRowCount(0)
-        self.tableWidget.setColumnCount(len(keys) + 1)
-        self.tableWidget.setHorizontalHeaderLabels(keys + ["Delete"])
-        self.tableWidget.setRowCount(len(cdb.entries))
-
-        for row_idx, entry in enumerate(cdb.entries):
-            for col_idx, field in enumerate(entry):
-                val = field.value
-                ts = field.typeSize
-                if ts == 1:
-                    val = bool(val[0]) if isinstance(val, (bytes, bytearray)) else bool(val)
-                elif ts in (2,3,4):
-                    val = int.from_bytes(val, byteorder="little") if isinstance(val, (bytes, bytearray)) else int(val)
-                else:
-                    val = val.decode("utf-8").rstrip("\x00") if isinstance(val, (bytes, bytearray)) else str(val)
-                item = QTableWidgetItem(str(val))
-                self.tableWidget.setItem(row_idx, col_idx, item)
-
-            btn = QPushButton("Delete")
-            btn.clicked.connect(lambda _, r=row_idx: self.deleteEntry(r))
-            self.tableWidget.setCellWidget(row_idx, len(keys), btn)
-
-        self.tableWidget.itemChanged.connect(self.onItemChanged)
-
-    def deleteEntry(self, row_idx):
-            cdbName = self.currentCdbName
-            res = self.cgdManager.removeEntry(cdbName, row_idx)
-            if res["success"]:
-                self.loadCdbTable(cdbName)
-            else:
-                QMessageBox.warning(self, "Error", res["error"])
-                
-    def onItemChanged(self, item: QTableWidgetItem):
-        row = item.row()
-        col = item.column()
-        cdb = self.cgdManager.cdbs[self.currentCdbName]
-        key = cdb.keys[col]
-        ts = cdb.typeSizes[col]
-        text = item.text().strip()
-        try:
-            if ts == 1:
-                if text.lower() in ("1","true","yes"):
-                    val = True
-                elif text.lower() in ("0","false","no"):
-                    val = False
-                else:
-                    raise TypeError(f"Key '{key}' expects boolean value")
-            elif ts in (2,3,4):
-                val = int(text)
-            else:
-                if text.isdigit():
-                    raise TypeError(f"Key '{key}' expects string value")
-                val = text
-            self.cgdManager.updateCdbEntry(self.currentCdbName, row, key, val)
-        except (TypeError, ValueError) as e:
-            QMessageBox.warning(self, "Invalid Value", str(e))
-            old_value = cdb.entries[row][col].value
-            if ts == 1:
-                old_value = bool(old_value[0]) if isinstance(old_value,(bytes,bytearray)) else bool(old_value)
-            elif ts in (2,3,4):
-                old_value = int.from_bytes(old_value, byteorder="little") if isinstance(old_value,(bytes,bytearray)) else int(old_value)
-            else:
-                old_value = old_value.decode("utf-8").rstrip("\x00") if isinstance(old_value,(bytes,bytearray)) else str(old_value)
-            item.setText(str(old_value))
+    def onCellClicked(self, index):
+        if index.column() == len(self.cgdManager.cdbs[self.currentCdbName].keys):
+            self.deleteEntry(index.row())
 
     def switchCdb(self, cdbName):
-        try:
-            self.tableWidget.itemChanged.disconnect()
-        except TypeError:
-            pass
         self.currentCdbName = cdbName
         self.loadCdbTable(cdbName)
+
+    def openSettings(self):
+        dlg = SettingsDialog(self, self.cgdManager.iconFolder)
+        if dlg.exec() == QDialog.Accepted:
+            new_path = dlg.getValue()
+            if new_path:
+                self.cgdManager.iconFolder = new_path
 
     def addEntry(self):
         cdbName = self.currentCdbName
@@ -216,6 +97,17 @@ class CgdEditor(QMainWindow):
             else:
                 QMessageBox.warning(self, "Error", res["error"])
 
+    def deleteEntry(self, row_idx):
+        cdbName = self.currentCdbName
+        res = self.cgdManager.removeEntry(cdbName, row_idx)
+        if res["success"]:
+            self.loadCdbTable(cdbName)
+        else:
+            QMessageBox.warning(self, "Error", res["error"])
+
+    def onCapsuleManagerDestroyed(self):
+        self.capsuleWindow = None
+
     def openCapsuleManager(self):
         if not hasattr(self, "capsuleWindow") or self.capsuleWindow is None:
             self.capsuleWindow = CapsuleManager(
@@ -223,28 +115,56 @@ class CgdEditor(QMainWindow):
                 os.path.join(self.cgdManager.iconFolder, "ENG"),
                 self.cgdManager.iconFolder
             )
-            self.capsuleWindow.destroyed.connect(self.onCapsuleWindowDestroyed)
-
+            self.capsuleWindow.destroyed.connect(self.onCapsuleManagerDestroyed)
         self.capsuleWindow.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
         self.capsuleWindow.show()
         self.capsuleWindow.raise_()
         self.capsuleWindow.activateWindow()
 
-    def onCapsuleWindowDestroyed(self):
-        self.capsuleWindow = None
-
     def exportCgdDip(self):
         if not hasattr(self, "cgdManager"):
             QMessageBox.warning(self, "Error", "CGD Manager not loaded!")
             return
-
         password, ok = QInputDialog.getText(self, "Archive Password", "Enter password for the DIP archive:")
         if not ok:
             return
-
         result = self.cgdManager.createDipFromCdbs(password)
         if result.get("success"):
             QMessageBox.information(self, "Success", result.get("message"))
         else:
             QMessageBox.critical(self, "Error", result.get("error"))
 
+    def searchValue(self):
+        key_to_search = self.searchKeyTextbox.text().strip()
+        value_to_search = self.searchValueTextbox.text().strip()
+        if not key_to_search or not value_to_search:
+            QMessageBox.warning(self, "Search Error", "Enter both key and value to start searching")
+            return
+        if key_to_search not in self.cgdManager.cdbs[self.currentCdbName].keys:
+            QMessageBox.warning(self, "Search Error", f"Key '{key_to_search}' not found in current CDB file!")
+            return
+
+        cdb = self.cgdManager.cdbs[self.currentCdbName]
+        col_index = cdb.keys.index(key_to_search)
+        found = False
+
+        for row in range(len(cdb.entries)):
+            field = cdb.entries[row][col_index]
+            val = field.value
+            ts = field.typeSize
+            if ts == 1:
+                val = str(bool(val[0]) if isinstance(val,(bytes,bytearray)) else bool(val))
+            elif ts in (2,3,4):
+                val = str(int.from_bytes(val, "little") if isinstance(val,(bytes,bytearray)) else int(val))
+            else:
+                val = val.decode("utf-8").rstrip("\x00") if isinstance(val,(bytes,bytearray)) else str(val)
+
+            if val == value_to_search:
+                self.tableWidget.selectRow(row)
+                index = self.tableWidget.model().index(row, col_index)
+                self.tableWidget.scrollTo(index, QAbstractItemView.PositionAtCenter)
+                found = True
+                break
+
+        if not found:
+            QMessageBox.information(self, "Not Found", f"Value '{value_to_search}' for key '{key_to_search}' not found!")

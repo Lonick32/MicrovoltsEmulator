@@ -33,31 +33,57 @@ class CgdManager:
     def parseCgdArchive(self, filePath, archivePassword, log_callback=None):
         errors = []
 
-        with zipfile.ZipFile(filePath, 'r') as zip_ref:
-            for zip_info in zip_ref.infolist():
-                try:
-                    zip_ref.extract(zip_info, path=self.tempPath, pwd=archivePassword.encode())
-                    if log_callback:
-                        log_callback(f"Extracted: {zip_info.filename}")
-                except Exception as e:
-                    errors.append(f"Error extracting {zip_info.filename}: {e}")
+        try:
+            with zipfile.ZipFile(filePath, 'r') as zip_ref:
+                all_names = [
+                    os.path.normpath(zi.filename)
+                    for zi in zip_ref.infolist()
+                    if not zi.filename.endswith("/")
+                ]
+
+                common_root = os.path.commonpath(all_names) if all_names else ""
+                if os.path.isfile(common_root):
+                    common_root = os.path.dirname(common_root)
+                for zip_info in zip_ref.infolist():
+                    normalized = os.path.normpath(zip_info.filename)
+                    rel_path = os.path.relpath(normalized, common_root)
+
+                    if rel_path.startswith(".."):
+                        rel_path = os.path.basename(normalized)
+
+                    zip_info.filename = rel_path
+
+                    try:
+                        zip_ref.extract(zip_info, path=self.tempPath, pwd=archivePassword.encode())
+                        if log_callback:
+                            log_callback(f"Extracted: {rel_path}")
+                    except Exception as e:
+                        errors.append(f"Error extracting {normalized}: {e}")
+
+        except Exception as e:
+            return {
+                "success": False,
+                "errors": [f"Archive read error: {e}"]
+            }
 
         for root, _, files in os.walk(self.tempPath):
+            rel_path = os.path.relpath(root, self.tempPath)
+            json_output_dir = os.path.join(self.json_dir, rel_path)
+            cdb_output_dir = os.path.join(self.cdb_dir, rel_path)
+
+            os.makedirs(json_output_dir, exist_ok=True)
+            os.makedirs(cdb_output_dir, exist_ok=True)
+
             for filename in files:
                 full_path = os.path.join(root, filename)
-                rel_path = os.path.relpath(root, self.tempPath)
-
-                json_output_dir = os.path.join(self.json_dir, rel_path)
-                cdb_output_dir = os.path.join(self.cdb_dir, rel_path)
-                os.makedirs(json_output_dir, exist_ok=True)
-                os.makedirs(cdb_output_dir, exist_ok=True)
 
                 if filename.lower().endswith(".cdb"):
                     if log_callback:
                         log_callback(f"Parsing: {full_path}")
+
                     try:
                         cdb = Cdb(full_path)
-                        cdb.relativePath = rel_path 
+                        cdb.relativePath = rel_path
                         cdb.parseCdb()
                         self.cdbs[cdb.fileName] = cdb
 
@@ -66,9 +92,11 @@ class CgdManager:
 
                     except Exception as e:
                         errors.append(f"Error parsing {full_path}: {e}")
+
                 else:
                     if log_callback:
                         log_callback(f"Copying non-CDB file: {filename}")
+
                     try:
                         shutil.copy2(full_path, os.path.join(json_output_dir, filename))
                         shutil.copy2(full_path, os.path.join(cdb_output_dir, filename))
@@ -76,9 +104,14 @@ class CgdManager:
                         errors.append(f"Error copying {full_path}: {e}")
 
         if errors:
-            return {"success": False, "errorCount": len(errors), "errors": errors}
-        else:
-            return {"success": True, "message": "All CDB files processed and exported successfully"}
+            return {
+                "success": False,
+                "errorCount": len(errors),
+                "errors": errors
+            }
+
+        return {"success": True, "message": "All CDB files processed and exported successfully"}
+
 
     def fromImpl(self, path: str, extension: str, log_callback=None):
         errors = []
