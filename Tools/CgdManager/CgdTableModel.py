@@ -1,11 +1,12 @@
 from PySide6.QtCore import Qt, QAbstractTableModel, QModelIndex
-
+from Utils import decodeValue, showToast
 
 class CdbTableModel(QAbstractTableModel):
-    def __init__(self, cdb, cgdManager):
+    def __init__(self, cdb, cgdManager, parentWidget=None):
         super().__init__()
         self.cdb = cdb
         self.cgdManager = cgdManager
+        self.parentWidget = parentWidget
 
     def rowCount(self, parent=QModelIndex()):
         return len(self.cdb.entries)
@@ -16,18 +17,12 @@ class CdbTableModel(QAbstractTableModel):
     def data(self, index, role=Qt.DisplayRole):
         if not index.isValid():
             return None
-        if role == Qt.DisplayRole:
+        field = self.cdb.entries[index.row()][index.column()] if index.column() < len(self.cdb.keys) else None
+
+        if role in (Qt.DisplayRole, Qt.EditRole):
             if index.column() == len(self.cdb.keys):
                 return "Delete"
-            field = self.cdb.entries[index.row()][index.column()]
-            val = field.value
-            ts = field.typeSize
-            if ts == 1:
-                return str(bool(val[0]) if isinstance(val, (bytes, bytearray)) else bool(val))
-            elif ts in (2,3,4):
-                return str(int.from_bytes(val, "little") if isinstance(val,(bytes,bytearray)) else int(val))
-            else:
-                return val.decode("utf-8").rstrip("\x00") if isinstance(val,(bytes,bytearray)) else str(val)
+            return str(decodeValue(field.value, field.typeSize)) if field else ""
         return None
 
     def setData(self, index, value, role=Qt.EditRole):
@@ -53,6 +48,8 @@ class CdbTableModel(QAbstractTableModel):
                 val = str(value)
             self.cdb.entries[row][col].value = val
             self.cgdManager.saveCdbOutputs(self.cdb)
+            if self.parentWidget:
+                showToast(self.parentWidget, "Entry data updated successfully")
             self.dataChanged.emit(index, index, [Qt.DisplayRole])
             return True
         except (TypeError, ValueError):

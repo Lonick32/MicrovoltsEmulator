@@ -1,31 +1,92 @@
-from PySide6.QtWidgets import QDialog, QFormLayout, QLineEdit, QComboBox, QDialogButtonBox
+from PySide6.QtWidgets import QDialog, QFormLayout, QLineEdit, QComboBox, QDialogButtonBox, QLabel, QMessageBox
+from Utils import defaultPixmap, getFieldValue, loadPixmap, showMessage
+from PySide6.QtCore import Qt
 
 class AddItemDialog(QDialog):
-    def __init__(self, parent=None):
+    def __init__(self, item_lookup, icon_lookup, pixmap_cache, item_icon_path, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Add new capsule item")
+        self.item_lookup = item_lookup   
+        self.icon_lookup = icon_lookup
+        self.pixmap_cache = pixmap_cache
+        self.item_icon_path = item_icon_path
+
         layout = QFormLayout(self)
 
         self.item_id_input = QLineEdit()
         self.item_id_input.setPlaceholderText("Enter ItemID")
         layout.addRow("ItemID:", self.item_id_input)
 
+        self.icon_preview = QLabel()
+        self.icon_preview.setFixedSize(64, 64)
+        self.icon_preview.setPixmap(defaultPixmap().scaled(64, 64, Qt.KeepAspectRatio))
+        layout.addRow("Preview:", self.icon_preview)
+
         self.type_input = QComboBox()
         self.type_input.addItems(["Normal (0)", "Rare (1)"])
         layout.addRow("Item Type:", self.type_input)
 
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        buttons.accepted.connect(self.accept)
+        buttons.accepted.connect(self.validateAndAccept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
 
+        self.item_id_input.textChanged.connect(self.updateIconPreview)
+
+    def updateIconPreview(self):
+        text = self.item_id_input.text().strip()
+        if not text.isdigit():
+            self.icon_preview.setPixmap(defaultPixmap().scaled(64, 64, Qt.KeepAspectRatio))
+            return
+
+        item_id = int(text)
+        item_entry = self.item_lookup.get(item_id)
+        if not item_entry:
+            self.icon_preview.setPixmap(defaultPixmap().scaled(64, 64, Qt.KeepAspectRatio))
+            return
+
+        icon_id = getFieldValue(item_entry, "ii_iconsmall") or getFieldValue(item_entry, "si_iconsmall")
+
+        if icon_id in self.pixmap_cache:
+            pixmap = self.pixmap_cache[icon_id]
+        else:
+            icon_entry_raw = self.icon_lookup.get(icon_id)
+            if not icon_entry_raw:
+                pixmap = defaultPixmap()
+            else:
+                entry = {
+                    "filename": getFieldValue(icon_entry_raw, "ii_filename"),
+                    "offset": getFieldValue(icon_entry_raw, "ii_offset"),
+                    "width": getFieldValue(icon_entry_raw, "ii_width"),
+                    "height": getFieldValue(icon_entry_raw, "ii_height"),
+                }
+                try:
+                    pixmap = loadPixmap(entry, self.item_icon_path)
+                    if pixmap.isNull():
+                        pixmap = defaultPixmap()
+                except Exception as e:
+                    pixmap = defaultPixmap()
+
+            self.pixmap_cache[icon_id] = pixmap
+        self.icon_preview.setPixmap(pixmap.scaled(64, 64, Qt.KeepAspectRatio))
+        self.icon_preview.repaint()
+
+    def validateAndAccept(self):
+        text = self.item_id_input.text().strip()
+        if not text.isdigit():
+            showMessage(QMessageBox.Warning, "Invalid ItemID", "ItemID must be a number.", self)
+            return
+
+        item_id = int(text)
+        if item_id not in self.item_lookup:
+            showMessage(QMessageBox.Warning, "Unknown ItemID", f"ItemID {item_id} does not exist.", self)
+            return
+
+        self.values = (item_id, self.type_input.currentIndex())
+        self.accept()
+
     def getValues(self):
-        try:
-            gi_itemid = int(self.item_id_input.text())
-        except ValueError:
-            gi_itemid = None
-        gi_type = self.type_input.currentIndex()  
-        return gi_itemid, gi_type
+        return getattr(self, "values", (None, None))
 
 class AddFixedItems(QDialog):
     def __init__(self, parent=None):

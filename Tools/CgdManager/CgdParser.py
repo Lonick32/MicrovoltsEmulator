@@ -112,7 +112,6 @@ class CgdManager:
 
         return {"success": True, "message": "All CDB files processed and exported successfully"}
 
-
     def fromImpl(self, path: str, extension: str, log_callback=None):
         errors = []
 
@@ -172,44 +171,6 @@ class CgdManager:
         if log_callback:
             log_callback(f"Exporting '{cdb.fileName}' to CDB...")
         cdb.toCdb(cdb_output_dir)
-
-    def saveJsonOnly(self, cdb: Cdb, log_callback=None):
-        rel_path = getattr(cdb, "relativePath", "")
-        json_output_dir = os.path.join(self.json_dir, rel_path)
-        os.makedirs(json_output_dir, exist_ok=True)
-
-        if log_callback:
-            log_callback(f"Exporting '{cdb.fileName}' to JSON...")
-        cdb.toJson(json_output_dir)
-
-    def saveCdbOnly(self, cdb: Cdb, log_callback=None):
-        rel_path = getattr(cdb, "relativePath", "")
-        cdb_output_dir = os.path.join(self.cdb_dir, rel_path)
-        os.makedirs(cdb_output_dir, exist_ok=True)
-
-        if log_callback:
-            log_callback(f"Exporting '{cdb.fileName}' to CDB...")
-        cdb.toCdb(cdb_output_dir)
-
-    def copyOriginals(self, src_root: str, extension: str, log_callback=None):
-        target_dir = self.cdb_dir if extension == ".cdb" else self.json_dir
-
-        for root, _, files in os.walk(src_root):
-            rel_path = os.path.relpath(root, src_root)
-            dest_dir = os.path.join(target_dir, rel_path)
-            os.makedirs(dest_dir, exist_ok=True)
-
-            for filename in files:
-                if filename.lower().endswith(extension):
-                    src_file = os.path.join(root, filename)
-                    dest_file = os.path.join(dest_dir, filename)
-                    try:
-                        shutil.copy2(src_file, dest_file)
-                        if log_callback:
-                            log_callback(f"Copied existing {extension.upper()} file: {dest_file}")
-                    except Exception as e:
-                        if log_callback:
-                            log_callback(f"Error copying {src_file}: {e}")
 
     def updateCdbEntry(self, cdbFileName: str, entryNumber, entryKey: str, newValue):
         cdb = self.cdbs.get(cdbFileName)
@@ -301,7 +262,6 @@ class CgdManager:
             }
         except Exception as e:
             return {"success": False, "error": f"Error while adding entries to {cdbFileName}: {e}"}
-
 
     def removeEntriesFrom(self, cdbFileName: str, entryIndices: list[int]):
         cdb = self.cdbs.get(cdbFileName)

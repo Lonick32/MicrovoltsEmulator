@@ -1,15 +1,7 @@
-from functools import partial
-from dataclasses import dataclass
-from typing import Any
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QLabel, QLineEdit, QMessageBox, QScrollArea, QDialog, QDialogButtonBox, QFormLayout
 )
-
-@dataclass
-class EntryDataType:
-    key: str
-    typeSize: int
-    value: Any
+from Utils import parseFieldValue, EntryDataType
 
 class NewEntryDialog(QDialog):
     def __init__(self, schema_fields, parent=None):
@@ -23,11 +15,9 @@ class NewEntryDialog(QDialog):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         main_layout.addWidget(scroll)
-
         scroll_content = QWidget()
         scroll_layout = QFormLayout(scroll_content)
         scroll.setWidget(scroll_content)
-
         self.editors = {}
         self.schema_fields = schema_fields
         for field in schema_fields:
@@ -44,28 +34,17 @@ class NewEntryDialog(QDialog):
 
     def validateAndAccept(self):
         validated = []
-        for field in self.schema_fields:
-            key = field.key
-            ts = field.typeSize
-            text = self.editors[key].text().strip()
-            try:
-                if ts == 1:
-                    if text.lower() in ("1","true","yes"):
-                        val = True
-                    elif text.lower() in ("0","false","no"):
-                        val = False
-                    else:
-                        raise TypeError(f"Key '{key}' expects boolean value")
-                elif ts in (2,3,4):
-                    val = int(text)
-                else:
-                    if text.isdigit():
-                        raise TypeError(f"Key '{key}' expects string value")
-                    val = text
+        try:
+            for field in self.schema_fields:
+                key = field.key
+                ts = field.typeSize
+                text = self.editors[key].text()
+                val = parseFieldValue(key, ts, text)
                 validated.append(EntryDataType(key, ts, val))
-            except Exception as e:
-                QMessageBox.warning(self, "Invalid value", f"{e}")
-                return
+        except Exception as e:
+            QMessageBox.warning(self, "Invalid value", f"{e}")
+            return
+
         self.values = validated
         self.accept()
 

@@ -1,14 +1,16 @@
 from functools import partial
 from PySide6.QtWidgets import (
     QWidget, QListWidget, QListWidgetItem, QLabel, QMessageBox,
-    QHBoxLayout, QVBoxLayout, QScrollArea, QPushButton, QInputDialog, QDialog
+    QHBoxLayout, QVBoxLayout, QScrollArea, QPushButton, QDialog, QFormLayout,
+    QLineEdit, QDialogButtonBox, QComboBox
 )
 from PySide6.QtCore import Qt
-from IconLoader import IconLoaderThread, defaultPixmap
 from CapsuleAddItem import AddItemDialog, AddFixedItems
 from CdbParser import EntryDataType
 from NewCapsuleDialog import CreateCapsuleDialog
 import random
+from copy import deepcopy
+from Utils import showMessage, getFieldValue, defaultPixmap, loadPixmap, findEntryIndexById, showToast
 
 class CapsuleManager(QWidget):
     def __init__(self, cgdManager, capsule_icon_path, item_icon_path):
@@ -17,7 +19,6 @@ class CapsuleManager(QWidget):
         self.iconFolder = capsule_icon_path
         self.item_icon_path = item_icon_path
         self.pixmap_cache = {} 
-        self.threads = []
         self.item_lookup = {}  
         self.icon_lookup = {} 
         self.buildLookups()
@@ -81,52 +82,47 @@ class CapsuleManager(QWidget):
             lower = cdb_name.lower()
             if "iteminfo" in lower or "itemweaponsinfo" in lower:
                 for entry in cdb.entries:
-                    self.item_lookup[self.getFieldValue(entry, "ii_id")] = entry
+                    self.item_lookup[getFieldValue(entry, "ii_id")] = entry
             elif "setiteminfo" in lower:
                 for entry in cdb.entries:
-                    self.item_lookup[self.getFieldValue(entry, "si_id")] = entry
+                    self.item_lookup[getFieldValue(entry, "si_id")] = entry
             elif "iconsinfo" in lower:
                 for entry in cdb.entries:
-                    self.icon_lookup[self.getFieldValue(entry, "ii_id")] = entry
+                    self.icon_lookup[getFieldValue(entry, "ii_id")] = entry
 
-    def decodeValue(self, val, ts):
-        if isinstance(val, (bytes, bytearray)):
-            try:
-                if ts in (1, 2, 3, 4):
-                    return int.from_bytes(val, byteorder="little")
-                return val.decode("utf-8").rstrip("\x00")
-            except Exception:
-                return str(val)
-        if isinstance(val, str) and val.startswith("b/0x"):
-            try:
-                bytes_list = [int(x, 16) for x in val.split("/")[1:]]
-                return int.from_bytes(bytes(bytes_list), "little")
-            except Exception:
-                return val
-        return val
+    def setEntryValueByType(self, entry, ts_index, value, type_size):
+        if type_size in (2, 3, 4):
+            entry[ts_index].value = value
+        elif type_size == 1:
+            entry[ts_index].value = bool(value)
+        else:
+            entry[ts_index].value = str(value)
 
-    def getFieldValue(self, entry, key, default=None):
-        field = next((f for f in entry if f.key == key), None)
-        if field:
-            return self.decodeValue(field.value, field.typeSize)
-        return default
+    def loadCapsules(self, restore_index=None, restore_scroll=None):
+        if restore_scroll is None:
+            restore_scroll = self.capsuleList.verticalScrollBar().value()
 
-    def loadCapsules(self):
         self.capsuleList.clear()
+
         for cdb_name, cdb in self.cgdManager.cdbs.items():
             if "gachaponinfo" in cdb_name.lower():
                 for entry in cdb.entries:
-                    gi_name = self.getFieldValue(entry, "gi_name")
-                    gi_price = self.getFieldValue(entry, "gi_price")
-                    gi_type = self.getFieldValue(entry, "gi_type")
+                    gi_name = getFieldValue(entry, "gi_name")
+                    gi_price = getFieldValue(entry, "gi_price")
+                    gi_type = getFieldValue(entry, "gi_type")
                     typeStr = "Coins" if gi_type == 0 else "RockTokens" if gi_type == 1 else "MicroPoints"
                     item = QListWidgetItem(f"{gi_name} ({gi_price} {typeStr})")
                     item.setData(Qt.UserRole, entry)
                     self.capsuleList.addItem(item)
 
+        if restore_index is not None:
+            self.capsuleList.setCurrentRow(restore_index)
+
+        self.capsuleList.verticalScrollBar().setValue(restore_scroll)
+
     def showCapsuleItems(self, capsule_item):
         entry = capsule_item.data(Qt.UserRole)
-        gi_infoid = self.getFieldValue(entry, "gi_infoid")
+        gi_infoid = getFieldValue(entry, "gi_infoid")
 
         for i in reversed(range(self.itemLayout.count())): # otherwise previous items stack up with new ones
             widget = self.itemLayout.itemAt(i).widget()
@@ -137,46 +133,38 @@ class CapsuleManager(QWidget):
         for cdb_name, cdb in self.cgdManager.cdbs.items():
             if "gachaponpackageinfo" in cdb_name.lower():
                 for pkg_entry in cdb.entries:
-                    if self.getFieldValue(pkg_entry, "gi_infoid") == gi_infoid:
-                        item_id = self.getFieldValue(pkg_entry, "gi_itemid")
+                    if getFieldValue(pkg_entry, "gi_infoid") == gi_infoid:
+                        item_id = getFieldValue(pkg_entry, "gi_itemid")
                         item_entry = self.item_lookup.get(item_id)
                         if item_entry:
-                            item_name = self.getFieldValue(item_entry, "ii_name") or self.getFieldValue(item_entry, "si_name")
-                            icon_id = self.getFieldValue(item_entry, "ii_iconsmall") or self.getFieldValue(item_entry, "si_iconsmall")
+                            item_name = getFieldValue(item_entry, "ii_name") or getFieldValue(item_entry, "si_name")
+                            icon_id = getFieldValue(item_entry, "ii_iconsmall") or getFieldValue(item_entry, "si_iconsmall")
                             items_to_display.append((item_name, icon_id, pkg_entry, cdb_name, item_id))
 
         if items_to_display:
             self.displayCapsuleItems(items_to_display)
 
     def displayCapsuleItems(self, items_to_display):
-        items_to_load = []
-
         for item_name, icon_id, pkg_entry, cdb_name, item_id in items_to_display:
             container = QWidget()
             layout = QHBoxLayout(container)
             layout.setContentsMargins(5, 5, 5, 5)
 
-            # rare items
-            gi_type = self.getFieldValue(pkg_entry, "gi_type")
-            if gi_type == 1:
-                container.setStyleSheet("background-color: rgb(255, 255, 200); color: black;")
-            else:
-                container.setStyleSheet("") 
+            gi_type = getFieldValue(pkg_entry, "gi_type")
+            container.setStyleSheet("background-color: rgb(255, 255, 200); color: black;" if gi_type == 1 else "")
 
             icon_lbl = QLabel()
             icon_lbl.setObjectName("icon")
-            icon_lbl.setStyleSheet("color: black;")
             icon_lbl.setFixedSize(64, 64)
             icon_lbl.setProperty("icon_id", icon_id)
             layout.addWidget(icon_lbl)
 
             text_lbl = QLabel(f"{item_name} (ItemID: {item_id})")
-            text_lbl.text
             text_lbl.setObjectName("text")
             layout.addWidget(text_lbl)
 
             delete_btn = QPushButton("DELETE")
-            delete_btn.setStyleSheet("background-color: rgb(220, 50, 50); color: white;") 
+            delete_btn.setStyleSheet("background-color: rgb(220, 50, 50); color: white;")
             delete_btn.setObjectName("delete")
             layout.addWidget(delete_btn)
 
@@ -188,92 +176,186 @@ class CapsuleManager(QWidget):
             self.itemLayout.addWidget(container)
 
             if icon_id in self.pixmap_cache:
-                icon_lbl.setPixmap(self.pixmap_cache[icon_id].scaled(64, 64, Qt.KeepAspectRatio))
+                pixmap = self.pixmap_cache[icon_id]
             else:
-                icon_lbl.setPixmap(defaultPixmap().scaled(64, 64, Qt.KeepAspectRatio))
+                pixmap = defaultPixmap()
                 if icon_entry_raw := self.icon_lookup.get(icon_id):
-                    items_to_load.append((
-                        icon_id,
-                        {
-                            "filename": self.getFieldValue(icon_entry_raw, "ii_filename"),
-                            "offset": self.getFieldValue(icon_entry_raw, "ii_offset"),
-                            "width": self.getFieldValue(icon_entry_raw, "ii_width"),
-                            "height": self.getFieldValue(icon_entry_raw, "ii_height"),
-                        }
-                    ))
+                    icon_entry = {
+                        "filename": getFieldValue(icon_entry_raw, "ii_filename"),
+                        "offset": getFieldValue(icon_entry_raw, "ii_offset"),
+                        "width": getFieldValue(icon_entry_raw, "ii_width"),
+                        "height": getFieldValue(icon_entry_raw, "ii_height"),
+                    }
+                    pixmap = loadPixmap(icon_entry, self.item_icon_path)  
+                    self.pixmap_cache[icon_id] = pixmap
+
+            icon_lbl.setPixmap(pixmap.scaled(64, 64, Qt.KeepAspectRatio))
 
             delete_btn.clicked.connect(partial(self.deleteItem, pkg_entry, cdb_name, container))
             update_btn.clicked.connect(partial(self.updateItem, pkg_entry, cdb_name, text_lbl))
-
-        if items_to_load:
-            thread = IconLoaderThread(items_to_load, self.item_icon_path)
-            thread.iconLoaded.connect(self.onIconLoaded)
-            thread.start()
-            self.threads.append(thread)
-
+    
     def deleteItem(self, pkg_entry, cdb_name, widget):
-        entry_num = self.cgdManager.cdbs[cdb_name].entries.index(pkg_entry)
-        result = self.cgdManager.removeEntry(cdb_name, entry_num)
+        entry_num = findEntryIndexById(self.cgdManager, cdb_name, pkg_entry)
+        if entry_num is None:
+            QMessageBox.critical(self, "Error", "Entry not found in CDB.")
+            return
 
+        result = self.cgdManager.removeEntry(cdb_name, entry_num)
         if result.get("success"):
+            showToast(self, "Item deleted successfully")
             widget.setParent(None)
         else:
-            msg = QMessageBox(self)
-            msg.setIcon(QMessageBox.Critical)
-            msg.setWindowTitle("Error Deleting Item")
-            msg.setText(result.get("error", "Failed to delete the item"))
-            msg.exec()
+            showMessage(QMessageBox.Critical,"Error Deleting Item",result.get("error", "Failed to delete the item"), self)
 
     def updateItem(self, pkg_entry, cdb_name, text_label):
-        entry_num = self.cgdManager.cdbs[cdb_name].entries.index(pkg_entry)
-        new_val, ok = QInputDialog.getInt(self, "Update ItemID", "Enter new ItemID:")
-        
-        if not ok:
-            return 
+        entry_num = findEntryIndexById(self.cgdManager, cdb_name, pkg_entry)
+        if entry_num is None:
+            showMessage(QMessageBox.Critical, "Error", "Entry not found in CDB.", self)
+            return
 
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Update Item")
+        layout = QFormLayout(dialog)
+
+        current_itemid = getFieldValue(pkg_entry, "gi_itemid")
+        current_gi_type = getFieldValue(pkg_entry, "gi_type")
+
+        input_box = QLineEdit()
+        input_box.setText(str(current_itemid))
+        layout.addRow("New ItemID:", input_box)
+
+        type_input = QComboBox()
+        type_input.addItems(["Normal (0)", "Rare (1)"])
+        type_input.setCurrentIndex(current_gi_type if current_gi_type in (0, 1) else 0)
+        layout.addRow("Item Type:", type_input)
+
+        preview = QLabel()
+        preview.setFixedSize(64, 64)
+        preview.setPixmap(defaultPixmap().scaled(64, 64, Qt.KeepAspectRatio))
+        layout.addRow("Preview:", preview)
+
+        def refreshPreview():
+            text = input_box.text().strip()
+            if not text.isdigit():
+                preview.setPixmap(defaultPixmap().scaled(64, 64, Qt.KeepAspectRatio))
+                return
+
+            item_id = int(text)
+            item_entry = self.item_lookup.get(item_id)
+            if not item_entry:
+                preview.setPixmap(defaultPixmap().scaled(64, 64, Qt.KeepAspectRatio))
+                return
+
+            icon_id = getFieldValue(item_entry, "ii_iconsmall") or getFieldValue(item_entry, "si_iconsmall")
+            if icon_id in self.pixmap_cache:
+                pixmap = self.pixmap_cache[icon_id]
+            else:
+                icon_entry_raw = self.icon_lookup.get(icon_id)
+                if not icon_entry_raw:
+                    pixmap = defaultPixmap()
+                else:
+                    entry = {
+                        "filename": getFieldValue(icon_entry_raw, "ii_filename"),
+                        "offset": getFieldValue(icon_entry_raw, "ii_offset"),
+                        "width": getFieldValue(icon_entry_raw, "ii_width"),
+                        "height": getFieldValue(icon_entry_raw, "ii_height"),
+                    }
+                    try:
+                        pixmap = loadPixmap(entry, self.item_icon_path)
+                        if pixmap.isNull():
+                            pixmap = defaultPixmap()
+                    except Exception:
+                        pixmap = defaultPixmap()
+                self.pixmap_cache[icon_id] = pixmap
+
+            preview.setPixmap(pixmap.scaled(64, 64, Qt.KeepAspectRatio))
+
+        input_box.textChanged.connect(refreshPreview)
+        refreshPreview()
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        layout.addWidget(buttons)
+
+        def acceptDialog():
+            text = input_box.text().strip()
+            if not text.isdigit():
+                showMessage(QMessageBox.Critical, "Error", "Invalid ItemID value.", self)
+                return
+
+            item_id = int(text)
+            if item_id not in self.item_lookup:
+                showMessage(QMessageBox.Critical, "Error", f"ItemID {item_id} does not exist.", self)
+                return
+
+            dialog.accept()
+
+        buttons.accepted.connect(acceptDialog)
+        buttons.rejected.connect(dialog.reject)
+
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        new_itemid = int(input_box.text().strip())
+        new_gi_type = type_input.currentIndex()
         try:
-            self.cgdManager.updateCdbEntry(cdb_name, entry_num, "gi_itemid", new_val)
-            #text_label.setText(f"{text_label.text().split('(ItemID:')[0]}(ItemID: {new_val})")
+            self.cgdManager.updateCdbEntry(cdb_name, entry_num, "gi_itemid", new_itemid)
+            self.cgdManager.updateCdbEntry(cdb_name, entry_num, "gi_type", new_gi_type)
+            showToast(self, "Item updated successfully")
+            self.sortGachaPackageInfo("gachaponpackageinfo")
             self.showCapsuleItems(self.capsuleList.currentItem())
         except Exception as e:
-            msg = QMessageBox(self)
-            msg.setIcon(QMessageBox.Critical)
-            msg.setWindowTitle("Error updating item")
-            msg.setText(f"Error while trying to update the item:\n{str(e)}")
-            msg.exec()
+            showMessage(QMessageBox.Critical, "Error updating item", f"Error while trying to update the item:\n{e}", self)
 
     def sortGachaPackageInfo(self, cdb_name: str):
         cdb = self.cgdManager.cdbs.get(cdb_name)
         if not cdb:
             return
-        cdb.entries.sort(key=lambda entry: (-self.getFieldValue(entry, "gi_type", 0), self.getFieldValue(entry, "gi_id", 0)))
-        self.cgdManager.saveCdbOutputs(cdb)
+
+        cdb_copy = deepcopy(cdb)
+        cdb_copy.entries.sort(key=lambda entry: (-getFieldValue(entry, "gi_type", 0), getFieldValue(entry, "gi_id", 0)))
+        ts_index = cdb_copy.keys.index("gi_id")
+        ts = cdb_copy.typeSizes[ts_index]
+        new_id = 0
+        for entry in cdb_copy.entries:
+            self.setEntryValueByType(entry, ts_index, new_id, ts)
+            new_id += 1
+
+        try:
+            self.cgdManager.saveCdbOutputs(cdb_copy)
+        except Exception as e:
+            showMessage(QMessageBox.Critical,"Error saving sorted CDB",f"Error while saving sorted CDB '{cdb_name}':\n{str(e)}",
+                self)
+            return
+
+        cdb.entries = cdb_copy.entries
 
     def sortCdbByKey(self, cdb_name: str, key: str, reverse: bool = False, start: int = 0):
         cdb = self.cgdManager.cdbs.get(cdb_name)
         if not cdb:
             return
 
-        cdb.entries.sort(key=lambda entry: self.getFieldValue(entry, key, 0), reverse=reverse)
+        cdb_copy = deepcopy(cdb)
+        cdb_copy.entries.sort(key=lambda entry: getFieldValue(entry, key, 0),reverse=reverse)
         if key == "gi_id":
-            for idx, entry in enumerate(cdb.entries, start=start): 
-                ts_index = cdb.keys.index("gi_id")
-                ts = cdb.typeSizes[ts_index]
-                if ts in (2,3,4):
-                    entry[ts_index].value = idx
-                elif ts == 1:
-                    entry[ts_index].value = bool(idx)
-                else:
-                    entry[ts_index].value = str(idx)
+            ts_index = cdb_copy.keys.index("gi_id")
+            ts = cdb_copy.typeSizes[ts_index]
 
-        self.cgdManager.saveCdbOutputs(cdb)
+            for idx, entry in enumerate(cdb_copy.entries, start=start):
+                self.setEntryValueByType(entry, ts_index, idx, ts)
+
+        try:
+            self.cgdManager.saveCdbOutputs(cdb_copy)
+        except Exception as e:
+            showMessage(QMessageBox.Critical,"Error saving sorted CDB",
+            f"Error while saving sorted CDB '{cdb_name}':\n{str(e)}", self)
+            return
+        cdb.entries = cdb_copy.entries
 
     def addItemToCapsuleImpl(self, capsule_entry, new_item_id, gi_type):
         if not capsule_entry:
             raise ValueError("capsule_entry NOT provided")
         
-        gi_infoid = self.getFieldValue(capsule_entry, "gi_infoid")
-        
+        gi_infoid = getFieldValue(capsule_entry, "gi_infoid")
         if new_item_id is None or gi_type is None:
             raise ValueError("Both new_item_id and gi_type NOT provided")
         
@@ -281,12 +363,11 @@ class CapsuleManager(QWidget):
         for cdb_name, cdb in self.cgdManager.cdbs.items():
             if "gachaponpackageinfo" in cdb_name.lower():
                 for entry in cdb.entries:
-                    entry_gi_id = self.getFieldValue(entry, "gi_id", 0)
+                    entry_gi_id = getFieldValue(entry, "gi_id", 0)
                     if entry_gi_id > max_gi_id:
                         max_gi_id = entry_gi_id
         
         new_gi_id = max_gi_id + 1
-        
         new_entry = [
             EntryDataType("gi_id", 4, new_gi_id),
             EntryDataType("gi_infoid", 4, gi_infoid),
@@ -300,22 +381,20 @@ class CapsuleManager(QWidget):
         
         result = self.cgdManager.addEntryTo("gachaponpackageinfo", new_entry)
         self.sortGachaPackageInfo("gachaponpackageinfo")
-        
         return result
 
     def addItemsToCapsule(self, capsule_entry, items: list[tuple[int, int]]):
         if not capsule_entry:
             return {"success": False, "errors": ["capsule_entry not provided"]}
 
-        gi_infoid = self.getFieldValue(capsule_entry, "gi_infoid")
+        gi_infoid = getFieldValue(capsule_entry, "gi_infoid")
         errors = []
         new_entries = []
-
         max_gi_id = 0
         for cdb_name, cdb in self.cgdManager.cdbs.items():
             if "gachaponpackageinfo" in cdb_name.lower():
                 for entry in cdb.entries:
-                    entry_gi_id = self.getFieldValue(entry, "gi_id", 0)
+                    entry_gi_id = getFieldValue(entry, "gi_id", 0)
                     if entry_gi_id > max_gi_id:
                         max_gi_id = entry_gi_id
 
@@ -339,59 +418,37 @@ class CapsuleManager(QWidget):
 
         if new_entries:
             result = self.cgdManager.addEntriesTo("gachaponpackageinfo", new_entries)
-            self.sortGachaPackageInfo("gachaponpackageinfo")
             if not result.get("success"):
                 errors.append(result.get("error"))
 
         if errors:
             return {"success": False, "errors": errors}
+        self.sortGachaPackageInfo("gachaponpackageinfo")
         return {"success": True, "message": f"Added {len(new_entries)} items successfully"}
-
 
     def addNewItem(self):
         current_capsule = self.capsuleList.currentItem()
-        errorMessage = QMessageBox(self)
-        errorMessage.setWindowTitle("Error")
-        errorMessage.setIcon(QMessageBox.Warning)
 
         if not current_capsule:
-            errorMessage.setText("You need to select a capsule before trying to add a new item")
-            errorMessage.exec()
+            showMessage(QMessageBox.Warning,"Error","You need to select a capsule before trying to add a new item", self)
             return
 
         capsule_entry = current_capsule.data(Qt.UserRole)
-
-        dialog = AddItemDialog(self)
+        dialog = AddItemDialog(self.item_lookup, self.icon_lookup, self.pixmap_cache, self.item_icon_path, self)
         if not dialog.exec():
             return
 
         new_item_id, gi_type = dialog.getValues()
         if new_item_id is None or gi_type is None:
-            errorMessage.setText("Both ItemID and CapsuleType must be provided!")
-            errorMessage.exec()
+            showMessage(QMessageBox.Warning,"Error","Both ItemID and CapsuleType must be provided!", self)
             return
 
         result = self.addItemToCapsuleImpl(capsule_entry, new_item_id, gi_type)
         if result.get("success"):
-            success = QMessageBox(self)
-            success.setIcon(QMessageBox.Information)
-            success.setWindowTitle("Success")
-            success.setText(result.get("message", "Entry added successfully!"))
-            success.exec()
+            showToast(self, "Item added successfully")
             self.showCapsuleItems(current_capsule)
         else:
-            errorMessage.setIcon(QMessageBox.Critical)
-            errorMessage.setText(result.get("error", "Failed to add entry."))
-            errorMessage.exec()
-
-    def onIconLoaded(self, icon_id, pixmap):
-        self.pixmap_cache[icon_id] = pixmap
-        for i in range(self.itemLayout.count()):
-            container = self.itemLayout.itemAt(i).widget()
-            if container:
-                icon_lbl = container.findChild(QLabel, "icon")
-                if icon_lbl.property("icon_id") == icon_id:
-                    icon_lbl.setPixmap(pixmap.scaled(64, 64, Qt.KeepAspectRatio))
+            showMessage(QMessageBox.Critical,"Error",result.get("error", "Failed to add entry."), self)
 
     def addNewCapsule(self):
         dialog = CreateCapsuleDialog(self)
@@ -424,11 +481,7 @@ class CapsuleManager(QWidget):
             missing.append("Lucky point (gi_luckypoint)")
 
         if missing:
-            QMessageBox.warning(
-                self,
-                "Validation Error",
-                "These fields are missing or have wrong values:\n\n" + "\n".join(missing)
-            )
+            QMessageBox.warning(self, "Validation Error","These fields are missing or have wrong values:\n\n" + "\n".join(missing))
             return
 
         if values["gi_listicon"] not in self.icon_lookup:
@@ -446,10 +499,10 @@ class CapsuleManager(QWidget):
             if "gachaponinfo" in cdb_name.lower():
                 found_gachaponinfo = True
                 for entry in cdb.entries:
-                    entry_gi_id = self.getFieldValue(entry, "gi_id", 0)
+                    entry_gi_id = getFieldValue(entry, "gi_id", 0)
                     if entry_gi_id > max_gi_id:
                         max_gi_id = entry_gi_id
-                    entry_infoid = self.getFieldValue(entry, "gi_infoid", None)
+                    entry_infoid = getFieldValue(entry, "gi_infoid", None)
                     if entry_infoid is not None:
                         existing_infoids.add(entry_infoid)
 
@@ -458,7 +511,6 @@ class CapsuleManager(QWidget):
             return
 
         new_gi_id = max_gi_id # + 1 unnecessary since original last capsule still remains last
-
         new_gi_infoid = None
         for _ in range(10000):
             candidate = random.randint(100000, 999999)
@@ -484,10 +536,8 @@ class CapsuleManager(QWidget):
         ]
 
         result = self.cgdManager.addEntryTo("gachaponinfo", new_entry)
-
         if result.get("success"):
             cdb = self.cgdManager.cdbs.get("gachaponinfo")
-
             if cdb and len(cdb.entries) >= 2:
                 original_last = cdb.entries[-2]
                 updated_last_id = new_gi_id + 1
@@ -496,16 +546,19 @@ class CapsuleManager(QWidget):
                         field.value = updated_last_id
                         break
                 cdb.entries[-2], cdb.entries[-1] = cdb.entries[-1], cdb.entries[-2]
-                self.cgdManager.saveCdbOutputs(cdb)
-
-            QMessageBox.information(self, "Success", "New capsule added successfully")
+                
+                try:
+                    self.cgdManager.saveCdbOutputs(cdb)
+                except Exception as e:
+                    showMessage(
+                    QMessageBox.Critical,"Error","There was an error while re-sorting the capsule after adding the item. "
+                    "Please manually put the lucky box capsule at the end of gachaponinfo")
+                    return
+            showToast(self, "New capsule added successfully")
             self.loadCapsules()
         else:
             QMessageBox.critical(self, "Error", result.get("error", "Failed to add new capsule."))
-
         dialog.deleteLater()
-
-
 
     def onCapsuleSelected(self, capsule_item):
         self.addItemButton.setEnabled(True)
@@ -523,14 +576,14 @@ class CapsuleManager(QWidget):
 
         capsule_entry = current_capsule.data(Qt.UserRole)
         current_values = {
-            "gi_name": self.getFieldValue(capsule_entry, "gi_name"),
-            "gi_type": self.getFieldValue(capsule_entry, "gi_type"),
-            "gi_limited_grade": self.getFieldValue(capsule_entry, "gi_limited_grade"),
-            "gi_price": self.getFieldValue(capsule_entry, "gi_price"),
-            "gi_luckypoint": self.getFieldValue(capsule_entry, "gi_luckypoint"),
-            "gi_listicon": self.getFieldValue(capsule_entry, "gi_listicon"),
-            "gi_titleicon": self.getFieldValue(capsule_entry, "gi_titleicon"),
-            "gi_desc": self.getFieldValue(capsule_entry, "gi_desc"),
+            "gi_name": getFieldValue(capsule_entry, "gi_name"),
+            "gi_type": getFieldValue(capsule_entry, "gi_type"),
+            "gi_limited_grade": getFieldValue(capsule_entry, "gi_limited_grade"),
+            "gi_price": getFieldValue(capsule_entry, "gi_price"),
+            "gi_luckypoint": getFieldValue(capsule_entry, "gi_luckypoint"),
+            "gi_listicon": getFieldValue(capsule_entry, "gi_listicon"),
+            "gi_titleicon": getFieldValue(capsule_entry, "gi_titleicon"),
+            "gi_desc": getFieldValue(capsule_entry, "gi_desc"),
         }
 
         dialog = CreateCapsuleDialog(self, prefill=current_values)
@@ -546,7 +599,6 @@ class CapsuleManager(QWidget):
             return
 
         values = dialog.getValues()
-
         missing = []
         for key, label in {
             "gi_name": "Name",
@@ -560,10 +612,8 @@ class CapsuleManager(QWidget):
             if not values[key]:
                 missing.append(label)
         if missing:
-            QMessageBox.warning(
-                self, "Validation Error",
-                "The following fields are missing or invalid:\n\n" + "\n".join(missing)
-            )
+            QMessageBox.warning(self, "Validation Error",
+                "The following fields are missing or invalid:\n\n" + "\n".join(missing))
             return
 
         if values["gi_listicon"] not in self.icon_lookup:
@@ -573,24 +623,26 @@ class CapsuleManager(QWidget):
             QMessageBox.critical(self, "Error", f"Title icon ID {values['gi_titleicon']} not found in iconsinfo.")
             return
 
-        cdb_name = next(
-            (name for name in self.cgdManager.cdbs if "gachaponinfo" in name.lower()), None
-        )
+        cdb_name = next((name for name in self.cgdManager.cdbs if "gachaponinfo" in name.lower()), None)
         if not cdb_name:
             QMessageBox.critical(self, "Error", "gachaponinfo CDB not loaded.")
             return
 
-        entry_index = self.cgdManager.cdbs[cdb_name].entries.index(capsule_entry)
+        entry_index = findEntryIndexById(self.cgdManager, cdb_name, capsule_entry)
+        if entry_index is None:
+            QMessageBox.critical(self, "Error", "Capsule entry not found in CDB.")
+            dialog.deleteLater()
+            return
 
         try:
+            current_index = self.capsuleList.currentRow()
+            scroll_pos = self.capsuleList.verticalScrollBar().value()
             for key, new_val in values.items():
                 self.cgdManager.updateCdbEntry(cdb_name, entry_index, key, new_val)
-
-            QMessageBox.information(self, "Success", "Capsule updated successfully.")
-            self.loadCapsules()
+            showToast(self, "Capsule updated successfully!")
+            self.loadCapsules(restore_index=current_index, restore_scroll=scroll_pos)
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to update capsule:\n{e}")
-
         dialog.deleteLater()
 
     def deleteCapsule(self):
@@ -600,34 +652,30 @@ class CapsuleManager(QWidget):
             return
 
         capsule_entry = current_capsule.data(Qt.UserRole)
-        gi_infoid = self.getFieldValue(capsule_entry, "gi_infoid")
-        gi_name = self.getFieldValue(capsule_entry, "gi_name")
-
-        gachaponinfo_cdb = next(
-            (n for n in self.cgdManager.cdbs if "gachaponinfo" in n.lower()), None
-        )
+        gi_infoid = getFieldValue(capsule_entry, "gi_infoid")
+        gi_name = getFieldValue(capsule_entry, "gi_name")
+        gachaponinfo_cdb = next((n for n in self.cgdManager.cdbs if "gachaponinfo" in n.lower()), None)
         if not gachaponinfo_cdb:
             QMessageBox.critical(self, "Error", "gachaponinfo CDB not found.")
             return
 
         last_entry = self.cgdManager.cdbs[gachaponinfo_cdb].entries[-1]
         if capsule_entry == last_entry:
-            QMessageBox.warning(
-                self, "Cannot Delete",
+            QMessageBox.warning(self, "Cannot Delete",
                 "The last special capsule is needed for lucky spins to work.\n"
-                "You can't delete this capsule, otherwise lucky spins won't work properly anymore!"
-            )
+                "You can't delete this capsule, otherwise lucky spins won't work properly anymore!")
             return
 
-        confirm = QMessageBox.question(
-            self, "Confirm Delete",
+        confirm = QMessageBox.question(self, "Confirm Delete",
             f"Are you sure you want to delete capsule '{gi_name}' and all its items?",
-            QMessageBox.Yes | QMessageBox.No
-        )
+            QMessageBox.Yes | QMessageBox.No)
         if confirm != QMessageBox.Yes:
             return
 
-        gi_index = self.cgdManager.cdbs[gachaponinfo_cdb].entries.index(capsule_entry)
+        gi_index = findEntryIndexById(self.cgdManager, gachaponinfo_cdb, capsule_entry)
+        if gi_index is None:
+            QMessageBox.critical(self, "Error", "Capsule entry not found in CDB.")
+            return
         result_info = self.cgdManager.removeEntry(gachaponinfo_cdb, gi_index)
 
         deleted_count = 0
@@ -635,23 +683,18 @@ class CapsuleManager(QWidget):
             if "gachaponpackageinfo" in cdb_name.lower():
                 indices_to_delete = [
                     i for i, entry in enumerate(cdb.entries)
-                    if self.getFieldValue(entry, "gi_infoid") == gi_infoid
+                    if getFieldValue(entry, "gi_infoid") == gi_infoid
                 ]
                 if indices_to_delete:
                     result_items = self.cgdManager.removeEntriesFrom(cdb_name, indices_to_delete)
                     deleted_count += len(indices_to_delete)
                     if not result_items.get("success"):
-                        QMessageBox.critical(
-                            self, "Error",
-                            f"Failed to delete some items from {cdb_name}: {result_items.get('error')}"
-                        )
+                        QMessageBox.critical(self, "Error",
+                            f"Failed to delete some items from {cdb_name}: {result_items.get('error')}")
 
         if result_info.get("success"):
             self.sortCdbByKey(gachaponinfo_cdb, "gi_id")
-            QMessageBox.information(
-                self, "Deleted",
-                f"Capsule '{gi_name}' deleted successfully.\nRemoved {deleted_count} related items."
-            )
+            showToast(self, "Capsule deleted successfully")
             self.loadCapsules()
             self.addItemButton.setEnabled(False)
             self.deleteCapsuleButton.setEnabled(False)
@@ -662,13 +705,9 @@ class CapsuleManager(QWidget):
 
     def addFixedItems(self):
         current_capsule = self.capsuleList.currentItem()
-        errorMessage = QMessageBox(self)
-        errorMessage.setWindowTitle("Error")
-        errorMessage.setIcon(QMessageBox.Warning)
 
         if not current_capsule:
-            errorMessage.setText("You need to select a capsule before trying to add new items")
-            errorMessage.exec()
+            showMessage(QMessageBox.Warning,"Error","You need to select a capsule before trying to add new items", self)
             return
 
         capsule_entry = current_capsule.data(Qt.UserRole)
@@ -681,11 +720,6 @@ class CapsuleManager(QWidget):
         self.showCapsuleItems(current_capsule)
 
         if not result.get("success"):
-            errorMessage.setText(f"Failed to add some items:\n{result.get('errors')}")
-            errorMessage.exec()
+            showMessage(QMessageBox.Critical,"Error",f"Failed to add some items:\n{result.get('errors')}", self)
         else:
-            success = QMessageBox(self)
-            success.setIcon(QMessageBox.Information)
-            success.setWindowTitle("Success")
-            success.setText(result.get("message", "All items were added successfully!"))
-            success.exec()
+            showToast(self, "All items added successfully")

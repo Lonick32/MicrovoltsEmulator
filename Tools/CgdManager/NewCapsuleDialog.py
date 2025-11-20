@@ -78,6 +78,7 @@ class CreateCapsuleDialog(QDialog):
         self.desc_input.setPlainText(str(prefill.get("gi_desc", "")))
 
     def getValues(self):
+        desc = self.desc_input.toPlainText().strip()
         return {
             "gi_name": self.name_input.text().strip(),
             "gi_type": self.type_input.currentIndex(),
@@ -86,5 +87,6 @@ class CreateCapsuleDialog(QDialog):
             "gi_luckypoint": self.lucky_input.value(),
             "gi_listicon": self.listicon_input.value(),
             "gi_titleicon": self.titleicon_input.value(),
-            "gi_desc": self.desc_input.toPlainText().strip()
+            "gi_desc": desc if desc else "Default description"
         }
+

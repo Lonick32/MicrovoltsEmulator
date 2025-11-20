@@ -8,7 +8,8 @@ from PySide6.QtGui import QAction
 from PySide6.QtCore import Qt
 from CapsuleEditor import CapsuleManager
 import os
-from AddNewDialog import EntryDataType, NewEntryDialog
+from AddNewDialog import NewEntryDialog
+from Utils import EntryDataType, decodeValue, showToast
 from EditSettingsDialog import SettingsDialog
 from CgdTableModel import CdbTableModel
 
@@ -59,9 +60,15 @@ class CgdEditor(QMainWindow):
 
     def loadCdbTable(self, cdbName):
         cdb = self.cgdManager.cdbs[cdbName]
-        self.model = CdbTableModel(cdb, self.cgdManager)
+        self.model = CdbTableModel(cdb, self.cgdManager, parentWidget=self)
         self.tableWidget.setModel(self.model)
-        self.tableWidget.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.tableWidget.setSelectionBehavior(QAbstractItemView.SelectItems)
+        self.tableWidget.setSelectionMode(QAbstractItemView.SingleSelection)
+
+        try:
+            self.tableWidget.clicked.disconnect()
+        except TypeError:
+            pass 
         self.tableWidget.clicked.connect(self.onCellClicked)
 
     def onCellClicked(self, index):
@@ -93,6 +100,7 @@ class CgdEditor(QMainWindow):
                 return
             res = self.cgdManager.addEntryTo(cdbName, new_fields)
             if res["success"]:
+                showToast(self, "New entry added successfully")
                 self.loadCdbTable(cdbName)
             else:
                 QMessageBox.warning(self, "Error", res["error"])
@@ -101,6 +109,7 @@ class CgdEditor(QMainWindow):
         cdbName = self.currentCdbName
         res = self.cgdManager.removeEntry(cdbName, row_idx)
         if res["success"]:
+            showToast(self, "Entry deleted successfully")
             self.loadCdbTable(cdbName)
         else:
             QMessageBox.warning(self, "Error", res["error"])
@@ -110,11 +119,8 @@ class CgdEditor(QMainWindow):
 
     def openCapsuleManager(self):
         if not hasattr(self, "capsuleWindow") or self.capsuleWindow is None:
-            self.capsuleWindow = CapsuleManager(
-                self.cgdManager,
-                os.path.join(self.cgdManager.iconFolder, "ENG"),
-                self.cgdManager.iconFolder
-            )
+            self.capsuleWindow = CapsuleManager(self.cgdManager,
+                os.path.join(self.cgdManager.iconFolder, "ENG"), self.cgdManager.iconFolder)
             self.capsuleWindow.destroyed.connect(self.onCapsuleManagerDestroyed)
         self.capsuleWindow.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
         self.capsuleWindow.show()
@@ -130,7 +136,7 @@ class CgdEditor(QMainWindow):
             return
         result = self.cgdManager.createDipFromCdbs(password)
         if result.get("success"):
-            QMessageBox.information(self, "Success", result.get("message"))
+            showToast("cgd.dip archive exported successfully")
         else:
             QMessageBox.critical(self, "Error", result.get("error"))
 
@@ -148,17 +154,9 @@ class CgdEditor(QMainWindow):
         col_index = cdb.keys.index(key_to_search)
         found = False
 
-        for row in range(len(cdb.entries)):
-            field = cdb.entries[row][col_index]
-            val = field.value
-            ts = field.typeSize
-            if ts == 1:
-                val = str(bool(val[0]) if isinstance(val,(bytes,bytearray)) else bool(val))
-            elif ts in (2,3,4):
-                val = str(int.from_bytes(val, "little") if isinstance(val,(bytes,bytearray)) else int(val))
-            else:
-                val = val.decode("utf-8").rstrip("\x00") if isinstance(val,(bytes,bytearray)) else str(val)
-
+        for row, entry in enumerate(cdb.entries):
+            field = entry[col_index]
+            val = str(decodeValue(field.value, field.typeSize))
             if val == value_to_search:
                 self.tableWidget.selectRow(row)
                 index = self.tableWidget.model().index(row, col_index)
