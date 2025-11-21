@@ -3,7 +3,7 @@
 A lot of things changed and the list is simply too big to fit in a page. Let's try to focus on the most important aspects to give an idea how much work was put in the last years (thanks to the community who helped testing too, of course!)
 
 ## 2.1.1 Complete code refactoring
-One of the main goals of version 2.0 was to clean up the entire codebase — that includes the Main Server, Cast Server, Auth Server, and the Common library.
+One of the main goals of version 2.0 was to clean up the entire codebase - that includes the Main Server, Cast Server, Auth Server, and the Common library.
 
 The code from version 1.0 worked, but it had a lot of problems when it came to maintainability and readability. It was messy in some places, hard to follow, and had some tricky lifetime issues, especially with how ASIO was used. It just wasn’t easy to work with, especially for anyone new coming into the project.
 
