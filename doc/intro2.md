@@ -48,7 +48,7 @@ The CastServer is responsible for handling most of the gameplay-related communic
 
 Since this server handles real-time gameplay, it needs to be fast. For that reason, the packets sent here are not encrypted - unlike the MainServer, which deals with more sensitive data and uses encryption accordingly.
 
-## Client folder
+## Tools folder
 This is where we added a few utilities to help with client modifications. More details on how to use them are covered in a later section.
 
 ## External Libraries
