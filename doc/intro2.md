@@ -5,7 +5,7 @@ Before introducing the requirements and the installation process, let's first di
 <a href="https://ibb.co/WWSVc6Ky"><img src="https://i.ibb.co/N6wTLsYj/server-setup.webp" alt="server-setup" border="0" /></a>
 
 ## Common
-This is a static library (.lib) that includes shared utilities used by all the servers — Auth, Main, and Cast.
+This is a static library (.lib) that includes shared utilities used by all the servers: Auth, Main, and Cast.
 
 It acts as the foundation for many core features like networking (handling communication between the server and client), cryptography, CDB data structures, and other essential components that are reused across the project.
 
