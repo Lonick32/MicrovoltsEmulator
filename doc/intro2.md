@@ -11,7 +11,7 @@ It acts as the foundation for many core features like networking (handling commu
 
 
 ## Auth Server
-As the name suggests, this is the server responsible for handling user authentication (basically, the login process.)
+As the name suggests, this is the server responsible for handling user authentication (basically, the login process) & authorization.
 
 It connects with any MainServer defined in the config file (we’ll go over this setup later) to fetch the current player count from each server. These counts are shown in the channel list during login.
 
