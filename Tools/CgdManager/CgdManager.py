@@ -7,6 +7,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtGui import QAction
 from PySide6.QtCore import Qt
 from CapsuleEditor import CapsuleManager
+from ShopManager import ShopManager
 import os
 from AddNewDialog import NewEntryDialog
 from Utils import EntryDataType, decodeValue, showToast
@@ -21,29 +22,41 @@ class CgdEditor(QMainWindow):
         self.resize(1200, 700)
         self.menuBar = QMenuBar()
         self.setMenuBar(self.menuBar)
+
         fileMenu = self.menuBar.addMenu("File")
         exportAction = QAction("Export cgd.dip", self)
         exportAction.triggered.connect(self.exportCgdDip)
         fileMenu.addAction(exportAction)
+
         settingsAction = QAction("Settings", self)
         settingsAction.triggered.connect(self.openSettings)
         fileMenu.addAction(settingsAction)
+
         managersMenu = self.menuBar.addMenu("Managers")
         capsuleManagerAction = QAction("Capsule Manager", self)
         capsuleManagerAction.triggered.connect(self.openCapsuleManager)
         managersMenu.addAction(capsuleManagerAction)
+
+        shopManagerAction = QAction("Shop Manager", self)
+        shopManagerAction.triggered.connect(self.openShopManager)
+        managersMenu.addAction(shopManagerAction)
+
         self.centralWidget = QWidget()
         self.setCentralWidget(self.centralWidget)
         self.layout = QVBoxLayout(self.centralWidget)
+
         self.comboBox = QComboBox()
         self.comboBox.addItems(sorted(self.cgdManager.cdbs.keys()))
         self.comboBox.currentTextChanged.connect(self.switchCdb)
         self.layout.addWidget(self.comboBox)
+
         self.tableWidget = QTableView()
         self.layout.addWidget(self.tableWidget)
+
         self.addEntryBtn = QPushButton("Add New Entry")
         self.addEntryBtn.clicked.connect(self.addEntry)
         self.layout.addWidget(self.addEntryBtn)
+
         search_layout = QHBoxLayout()
         self.searchKeyTextbox = QLineEdit()
         self.searchKeyTextbox.setPlaceholderText("Enter key to search (column name)")
@@ -55,6 +68,7 @@ class CgdEditor(QMainWindow):
         searchBtn.clicked.connect(self.searchValue)
         search_layout.addWidget(searchBtn)
         self.layout.addLayout(search_layout)
+
         self.currentCdbName = self.comboBox.currentText()
         self.loadCdbTable(self.currentCdbName)
 
@@ -126,6 +140,22 @@ class CgdEditor(QMainWindow):
         self.capsuleWindow.show()
         self.capsuleWindow.raise_()
         self.capsuleWindow.activateWindow()
+
+    def openShopManager(self):
+        if not hasattr(self, "shopWindow") or self.shopWindow is None:
+            self.shopWindow = ShopManager(
+                self.cgdManager,
+                os.path.join(self.cgdManager.iconFolder, "ENG"),
+                self.cgdManager.iconFolder
+            )
+            self.shopWindow.destroyed.connect(self.onShopManagerDestroyed)
+        self.shopWindow.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        self.shopWindow.show()
+        self.shopWindow.raise_()
+        self.shopWindow.activateWindow()
+
+    def onShopManagerDestroyed(self):
+        self.shopWindow = None
 
     def exportCgdDip(self):
         if not hasattr(self, "cgdManager"):
