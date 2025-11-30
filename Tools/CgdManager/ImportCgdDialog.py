@@ -54,7 +54,7 @@ class ParserWorker(QObject):
                 self.path, self.password, log_callback=self.logSignal.emit
             )
         elif self.mode == "existing":
-            result = self.manager.parseJsonFiles(self.path, log_callback=self.logSignal.emit)
+            result = self.manager.parseCdbFiles(self.path, log_callback=self.logSignal.emit)
         else:
             result = {"success": False, "error": f"Unknown import mode: {self.mode}"}
         self.finishedSignal.emit(result)
@@ -64,14 +64,14 @@ class ImportCgdDialog(QMainWindow):
         super().__init__()
         self.setWindowTitle("Importer")
         self.index = 0
-        self.cgdManager = any
+        self.cgdManager = None
         self.iconFolder = ""
         self.settings = load_settings()
 
         main_layout = QVBoxLayout()
 
         self.comboBox = QComboBox()
-        self.comboBox.addItems(["cgd.dip archive", "select existing folder (must contain cdbs and jsons subfolders)"])
+        self.comboBox.addItems(["cgd.dip archive", "select existing folder (must contain cdbs subfolder)"])
         main_layout.addWidget(self.comboBox)
 
         self.passwordTextbox = QLineEdit()
@@ -198,7 +198,6 @@ class ImportCgdDialog(QMainWindow):
         self.cgdManager = CgdManager(temp_dir)
         self.cgdManager.iconFolder = self.iconFolder
         if mode == "existing":
-            self.cgdManager.json_dir = os.path.join(path, "jsons")
             self.cgdManager.cdb_dir = os.path.join(path, "cdbs")
 
         self.saveCurrentState()

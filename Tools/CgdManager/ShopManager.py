@@ -1,122 +1,12 @@
 from functools import partial
 from PySide6.QtWidgets import (
-    QWidget, QLabel, QHBoxLayout, QVBoxLayout, QScrollArea, QComboBox, QApplication,
-    QTreeWidget, QTreeWidgetItem, QPushButton, QDialog, QFormLayout, QLineEdit,
-    QDialogButtonBox, QMessageBox
+    QWidget, QLabel, QHBoxLayout, QVBoxLayout, QScrollArea, QComboBox,
+    QTreeWidget, QTreeWidgetItem, QPushButton, QDialog, QMessageBox
 )
 from PySide6.QtCore import Qt
 from Utils import getFieldValue, defaultPixmap, loadPixmap, showToast
-
-class ModifyItemDialog(QDialog):
-    def __init__(self, parent, vendor_entry, item_lookup, icon_lookup, item_icon_path):
-        super().__init__(parent)
-        self.vendor_entry = vendor_entry
-        self.item_lookup = item_lookup
-        self.icon_lookup = icon_lookup
-        self.item_icon_path = item_icon_path
-        self.setWindowTitle("Modify Item Durations & Prices")
-        self.resize(520, 320)
-
-        self.duration_map = [] 
-        self._build_duration_map()
-
-        self.layout = QVBoxLayout(self)
-
-        self.durationDropdown = QComboBox()
-        for label, fk, iid in self.duration_map:
-            self.durationDropdown.addItem(label, (fk, iid))
-        self.durationDropdown.currentIndexChanged.connect(self.onDurationChanged)
-        self.layout.addWidget(self.durationDropdown)
-
-        self.form = QFormLayout()
-        self.input_cash = QLineEdit()
-        self.input_coupon = QLineEdit()
-        self.input_point = QLineEdit()
-        self.form.addRow("RT (ii_buy_cash):", self.input_cash)
-        self.form.addRow("Coupon (ii_buy_coupon):", self.input_coupon)
-        self.form.addRow("MP (ii_buy_point):", self.input_point)
-        self.layout.addLayout(self.form)
-
-        self.buttons = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
-        self.buttons.accepted.connect(self.onSave)
-        self.buttons.rejected.connect(self.reject)
-        self.layout.addWidget(self.buttons)
-
-        if self.duration_map:
-            self.onDurationChanged(0)
-        else:
-            QMessageBox.information(self, "No durations", "This vendor entry has no duration variants to modify.")
-            self.buttons.button(QDialogButtonBox.Save).setEnabled(False)
-
-    def _build_duration_map(self):
-        for num in range(1, 5):
-            base = f"vi_list_{num:02d}"
-            for suffix, label_suffix in [("", ""), ("_a", " (Speed)"), ("_b", " (Tank)")]:
-                key = base + suffix
-                val = getFieldValue(self.vendor_entry, key)
-                if val is None:
-                    continue
-                if val == 0:
-                    continue
-                item_entry = self.item_lookup.get(val)
-                time_label = ""
-                if item_entry:
-                    time_label = getFieldValue(item_entry, "ii_name_time") or ""
-                display_label = f"{num} - {time_label}{label_suffix} (ItemID: {val})"
-                self.duration_map.append((display_label, key, val))
-
-    def onDurationChanged(self, idx):
-        if idx < 0 or idx >= len(self.duration_map):
-            return
-        _, _, item_id = self.duration_map[idx]
-        item_entry = self.item_lookup.get(item_id)
-        if not item_entry:
-            self.input_cash.setText("")
-            self.input_coupon.setText("")
-            self.input_point.setText("")
-            return
-        cash = getFieldValue(item_entry, "ii_buy_cash", 0) or 0
-        coupon = getFieldValue(item_entry, "ii_buy_coupon", 0) or 0
-        point = getFieldValue(item_entry, "ii_buy_point", 0) or 0
-        self.input_cash.setText(str(cash))
-        self.input_coupon.setText(str(coupon))
-        self.input_point.setText(str(point))
-
-    def _setFieldValue(self, entry, key, newval):
-        for f in entry:
-            if f.key == key:
-                f.value = newval
-                return True
-        return False
-
-    def onSave(self):
-        idx = self.durationDropdown.currentIndex()
-        if idx < 0:
-            return
-        _, _, item_id = self.duration_map[idx]
-        item_entry = self.item_lookup.get(item_id)
-        if not item_entry:
-            QMessageBox.critical(self, "Error", "Target item entry not found in memory.")
-            return
-
-        try:
-            new_cash = int(self.input_cash.text().strip() or 0)
-            new_coupon = int(self.input_coupon.text().strip() or 0)
-            new_point = int(self.input_point.text().strip() or 0)
-        except ValueError:
-            QMessageBox.warning(self, "Input error", "Please enter integer values for prices.")
-            return
-
-        ok_cash = self._setFieldValue(item_entry, "ii_buy_cash", new_cash)
-        ok_coupon = self._setFieldValue(item_entry, "ii_buy_coupon", new_coupon)
-        ok_point = self._setFieldValue(item_entry, "ii_buy_point", new_point)
-
-        if not (ok_cash or ok_coupon or ok_point):
-            QMessageBox.warning(self, "Warning", "No price fields were found to update in the item entry.")
-        else:
-            showToast(self, "Prices updated in memory.")
-        self.accept()
-
+from ModifyShopItemDialog import ModifyItemDialog
+from AddNewVendorItemDialog import AddNewVendorItemDialog
 
 class ShopManager(QWidget):
     CHARACTER_FLAGS = {
@@ -172,6 +62,15 @@ class ShopManager(QWidget):
         self.currencyFilterDropdown.currentTextChanged.connect(self.refreshItemDisplay)
         main_layout.addWidget(self.currencyFilterDropdown)
 
+        self.addItemBtn = QPushButton("Add Item")
+        self.addItemBtn.clicked.connect(self.openAddItemDialog)
+        main_layout.addWidget(self.addItemBtn)
+        
+        self.deleteItemBtn = QPushButton("Re-sort")
+        self.deleteItemBtn.clicked.connect(self.resortVendorInfo)
+        main_layout.addWidget(self.deleteItemBtn)
+
+
         split_layout = QHBoxLayout()
         main_layout.addLayout(split_layout)
 
@@ -195,17 +94,17 @@ class ShopManager(QWidget):
             lower = cdb_name.lower()
             if "iteminfo" in lower or "itemweaponsinfo" in lower:
                 key = "ii_id"
-                for entry in cdb.entries:
+                for idx, entry in enumerate(cdb.entries):
                     entry_id = getFieldValue(entry, key)
                     if entry_id is not None:
-                        self.item_lookup[entry_id] = entry
+                        self.item_lookup[entry_id] = (entry, cdb.fileName, idx)
             elif "vendorinfo" in lower:
-                for entry in cdb.entries:
+                for idx, entry in enumerate(cdb.entries):
                     vi_id = getFieldValue(entry, "vi_id")
                     if vi_id is not None:
-                        self.vendor_lookup[vi_id] = entry
+                        self.vendor_lookup[vi_id] = (entry, cdb.fileName, idx)
             elif "iconsinfo" in lower:
-                for entry in cdb.entries:
+                for idx, entry in enumerate(cdb.entries):
                     ii_id = getFieldValue(entry, "ii_id")
                     if ii_id is not None:
                         self.icon_lookup[ii_id] = entry
@@ -244,14 +143,16 @@ class ShopManager(QWidget):
             return
 
         self.relevant_items = []
-        for v in self.vendor_lookup.values():
-            vi_id = getFieldValue(v, "vi_id")
-            item_entry = self.item_lookup.get(vi_id)
-            if item_entry is None:
+        for v_meta in self.vendor_lookup.values():
+            v_entry = v_meta[0]
+            vi_id = getFieldValue(v_entry, "vi_id")
+            item_meta = self.item_lookup.get(vi_id)
+            if item_meta is None:
                 continue
+            item_entry = item_meta[0]
             if char_flag and not getFieldValue(item_entry, char_flag):
                 continue
-            if getFieldValue(v, "vi_category") != cat_id:
+            if getFieldValue(v_entry, "vi_category") != cat_id:
                 continue
             self.relevant_items.append((item_entry, vi_id))
 
@@ -321,6 +222,10 @@ class ShopManager(QWidget):
         modify_btn.setObjectName("modify")
         layout.addWidget(modify_btn)
 
+        delete_btn = QPushButton("DELETE")
+        delete_btn.setObjectName("delete")
+        layout.addWidget(delete_btn)
+
         self.itemLayout.addWidget(container)
 
         if item_id in self.pixmap_cache:
@@ -339,13 +244,199 @@ class ShopManager(QWidget):
                 self.pixmap_cache[item_id] = pixmap
         icon_lbl.setPixmap(pixmap.scaled(64, 64, Qt.KeepAspectRatio))
 
-        vendor_entry = self.vendor_lookup.get(item_id)
-        modify_btn.clicked.connect(partial(self.openModifyDialog, vendor_entry))
+        vendor_meta = self.vendor_lookup.get(item_id)
+        vendor_entry = vendor_meta[0] if vendor_meta else None
+        modify_btn.clicked.connect(partial(self.openModifyDialog, item_id))
+        delete_btn.clicked.connect(partial(self.deleteVendorItem, item_id))
 
-    def openModifyDialog(self, vendor_entry):
-        if vendor_entry is None:
+
+    def refreshRelevantItems(self):
+        if not self.currentMainSelection or not self.currentSubSelection:
+            return
+            
+        parent_name = None
+        for i in range(self.leftTree.topLevelItemCount()):
+            top_item = self.leftTree.topLevelItem(i)
+            for j in range(top_item.childCount()):
+                child = top_item.child(j)
+                if child.text(0) == self.currentSubSelection:
+                    parent_name = top_item.text(0)
+                    break
+            if parent_name:
+                break
+        
+        char_flag = self.CHARACTER_FLAGS.get(self.currentMainSelection)
+        cat_id = (self.CATEGORY_MAP["Weapons"].get(self.currentSubSelection)
+                if self.currentMainSelection == "Weapons"
+                else self.CATEGORY_MAP.get(parent_name, {}).get(self.currentSubSelection))
+        if cat_id is None:
+            return
+
+        self.relevant_items = []
+        for v_meta in self.vendor_lookup.values():
+            v_entry = v_meta[0]
+            vi_id = getFieldValue(v_entry, "vi_id")
+            item_meta = self.item_lookup.get(vi_id)
+            if item_meta is None:
+                continue
+            item_entry = item_meta[0]
+            if char_flag and not getFieldValue(item_entry, char_flag):
+                continue
+            if getFieldValue(v_entry, "vi_category") != cat_id:
+                continue
+            self.relevant_items.append((item_entry, vi_id))
+        
+        self.refreshItemDisplay()
+    
+    def openModifyDialog(self, item_id):
+        vendor_meta = self.vendor_lookup.get(item_id)
+        if not vendor_meta:
             QMessageBox.critical(self, "Error", "Vendor entry not found for this item.")
             return
-        dlg = ModifyItemDialog(self, vendor_entry, self.item_lookup, self.icon_lookup, self.item_icon_path)
+        vendor_entry, vendor_cdb_name, vendor_entry_index = vendor_meta[0], vendor_meta[1], vendor_meta[2]
+        
+        original_vi_id = item_id
+        
+        dlg = ModifyItemDialog(self, self.cgdManager, vendor_cdb_name, vendor_entry_index, self.item_lookup, self.icon_lookup, self.item_icon_path, self.vendor_lookup)
         if dlg.exec() == QDialog.Accepted:
-            showToast(self, "Changes saved in memory. Call CGD save functions to persist.")
+            updated_vendor_entry = self.cgdManager.cdbs[vendor_cdb_name].entries[vendor_entry_index]
+            new_vi_id = getFieldValue(updated_vendor_entry, "vi_id")
+            
+            if new_vi_id != original_vi_id and original_vi_id in self.vendor_lookup:
+                del self.vendor_lookup[original_vi_id]
+            
+            self.buildLookups()
+            self.refreshRelevantItems()
+            
+            showToast(self, "Changes saved in CDB")
+
+    def openAddItemDialog(self):
+        dlg = AddNewVendorItemDialog(self, self)
+        if dlg.exec() == QDialog.Accepted:
+            self.buildLookups()
+            self.refreshRelevantItems()
+
+    def deleteVendorItem(self, item_id):
+        vendor_meta = self.vendor_lookup.get(item_id)
+        if not vendor_meta:
+            QMessageBox.critical(self, "Error", f"No vendor entry found for item ID {item_id}.")
+            return
+
+        v_entry, cdbFileName, entryNumber = vendor_meta
+
+        reply = QMessageBox.question(
+            self,
+            "Confirm Delete",
+            f"Are you sure you want to delete vendor entry for item ID {item_id}?",
+            QMessageBox.Yes | QMessageBox.No
+        )
+
+        if reply != QMessageBox.Yes:
+            return
+
+        result = self.cgdManager.removeEntry(cdbFileName, entryNumber)
+        if not result.get("success"):
+            QMessageBox.critical(self, "Error", result.get("error", "Unknown error"))
+            return
+
+        if item_id in self.vendor_lookup:
+            del self.vendor_lookup[item_id]
+
+        self.refreshRelevantItems()
+        showToast(self, "Vendor entry removed.")
+
+
+    def resortVendorInfo(self):
+        vendor_cdb = self.cgdManager.cdbs["vendorinfo"]
+        entries = vendor_cdb.entries
+
+        def detect_type(item_id):
+            meta = self.item_lookup.get(item_id)
+            if not meta:
+                print(f"[SORT] Item {item_id} not found in item_lookup → treat as coupon.")
+                return "coupon"
+
+            entry = meta[0] if isinstance(meta, tuple) else meta
+            if not entry:
+                print(f"[SORT] Item entry missing for {item_id} → treat as coupon.")
+                return "coupon"
+
+            try:
+                cash = int(getFieldValue(entry, "ii_buy_cash") or 0)
+            except Exception:
+                cash = 0
+            try:
+                point = int(getFieldValue(entry, "ii_buy_point") or 0)
+            except Exception:
+                point = 0
+            try:
+                coupon = int(getFieldValue(entry, "ii_buy_coupon") or 0)
+            except Exception:
+                coupon = 0
+
+            if cash > 0:
+                return "rt"
+            if point > 0:
+                return "mp"
+            if coupon > 0:
+                return "coupon"
+
+            return "coupon"
+
+        rt_list = []
+        mp_list = []
+        coupon_list = []
+
+        for idx, entry in enumerate(entries):
+            raw_vi = getFieldValue(entry, "vi_list_01")
+            if not raw_vi:
+                continue
+
+            try:
+                vi_id = int(raw_vi)
+            except Exception:
+                print(f"[SORT] Skipping entry at entries[{idx}] because vi_list_01 is not integer: {raw_vi!r}")
+                continue
+
+            t = detect_type(vi_id)
+
+            if t == "rt":
+                rt_list.append(entry)
+            elif t == "mp":
+                mp_list.append(entry)
+            else:
+                coupon_list.append(entry)
+
+        print(f"[SORT] Counts → RT: {len(rt_list)}, MP: {len(mp_list)}, Coupon: {len(coupon_list)}")
+
+        sorted_entries = rt_list + mp_list + coupon_list
+
+        for new_index, entry in enumerate(sorted_entries, start=1):
+            original_idx = None
+            try:
+                original_idx = next(i for i, e in enumerate(entries) if e is entry)
+            except StopIteration:
+                try:
+                    original_idx = entries.index(entry)
+                except ValueError:
+                    original_idx = None
+
+            if original_idx is None:
+                print(f"[SORT][WARN] Could not find numeric index for entry (vi_list_01={getFieldValue(entry,'vi_list_01')}). Skipping update for this entry.")
+                continue
+
+            print(f"[SORT] Updating vendor entry numeric index={original_idx} -> vi_array_* = {new_index}")
+
+            vendor_cdb.updateValue(original_idx, "vi_array_none", new_index)
+            vendor_cdb.updateValue(original_idx, "vi_array_new", new_index)
+            vendor_cdb.updateValue(original_idx, "vi_array_hit", new_index)
+
+        try:
+            self.cgdManager.saveCdbOutputs(vendor_cdb)
+        except Exception as e:
+            print(f"[SORT][ERROR] Failed to save vendorinfo CDB: {e}")
+            QMessageBox.critical(self, "Save Error", f"Failed to save vendorinfo CDB:\n{e}")
+            return
+        
+        showToast("VendorInfo resorted successfully")
+        print("[SORT] VendorInfo resorted by RT > MP > Coupon priority.")

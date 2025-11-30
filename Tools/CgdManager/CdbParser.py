@@ -1,5 +1,4 @@
 import os
-import json
 from Utils import EntryDataType, decodeValue
 
 class Cdb:
@@ -21,6 +20,7 @@ class Cdb:
                 key_str = keyBytes.rstrip(b'\x00').decode("utf-8", errors="ignore")
                 keys.append(key_str)
             self.keys = keys
+
             typeSizes = []
             for _ in range(totalKeys):
                 size = int.from_bytes(f.read(4), byteorder="little")
@@ -37,39 +37,6 @@ class Cdb:
                         value = decodeValue(raw, size)
                         entry_fields.append(EntryDataType(key=key, typeSize=size, value=value))
                     self.entries.append(entry_fields)
-
-    def parseJson(self):
-        with open(self.filePath, "r", encoding="utf-8") as f:
-            json_data = json.load(f)
-        header = json_data.get("_header")
-        if header:
-            self.keys = header.get("keys", [])
-            self.typeSizes = header.get("typeSizes", [])
-        entries_list = json_data.get("entries", [])
-        for entry_obj in entries_list:
-            entry_fields = []
-            for key, field_data in entry_obj.items():
-                ts = field_data["typeSize"]
-                value = field_data["value"]
-                py_value = decodeValue(value, ts)
-                entry_fields.append(EntryDataType(key=key, typeSize=ts, value=py_value))
-            self.entries.append(entry_fields)
-
-    def toJson(self, outputPath):
-        json_data = {
-            "_header": {"keys": self.keys, "typeSizes": self.typeSizes},
-            "entries": []
-        }
-        for entry_fields in self.entries:
-            entry_obj = {}
-            for field in entry_fields:
-                val = field.value
-                ts = field.typeSize
-                entry_obj[field.key] = {"typeSize": ts, "value": val}
-            json_data["entries"].append(entry_obj)
-        output_file = os.path.join(outputPath, f"{self.fileName}.json")
-        with open(output_file, "w", encoding="utf-8") as f:
-            json.dump(json_data, f, indent=4, ensure_ascii=False)
 
     def toCdb(self, outputPath):
         if not self.keys or not self.typeSizes:
