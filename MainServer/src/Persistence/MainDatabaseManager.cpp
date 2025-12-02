@@ -2000,7 +2000,7 @@ namespace Main
             }
         }
 
-        void PersistentDatabase::reduceDurability(std::uint32_t accountId, const std::vector<Main::Structures::EquippedItem>& equippedItems)
+        void PersistentDatabase::reduceDurability(std::uint32_t accountId, const std::vector<std::pair<std::uint32_t, std::uint64_t>>& equippedItems)
         {
             try
             {
@@ -2009,7 +2009,7 @@ namespace Main
 
                 for (const auto& currentEquippedItem : equippedItems)
                 {
-                    const auto currentItemBaseDurability = Main::CdbUtils::getItemDurability(currentEquippedItem.id);
+                    const auto currentItemBaseDurability = Main::CdbUtils::getItemDurability(currentEquippedItem.first);
 
                     if (!currentItemBaseDurability || *currentItemBaseDurability == 0)
                         continue;
@@ -2022,7 +2022,7 @@ namespace Main
 
                     stmt->setUInt(1, newDurability);
                     stmt->setUInt(2, accountId);
-                    stmt->setUInt(3, currentEquippedItem.serialInfo.itemNumber);
+                    stmt->setUInt(3, currentEquippedItem.second);
                     stmt->executeUpdate();
                 }
             }

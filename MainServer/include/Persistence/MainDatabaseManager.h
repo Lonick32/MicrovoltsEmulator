@@ -182,7 +182,7 @@ namespace Main
 				return getRewards<RewardsGenerator, decltype(l), decltype(l2), 32>("MonthlyRewards", "32", rewardsGenerator, l, l2);
 			}
 
-			void reduceDurability(std::uint32_t accountId, const std::vector<Main::Structures::EquippedItem>& equippedItems);
+			void reduceDurability(std::uint32_t accountId, const std::vector<std::pair<std::uint32_t, std::uint64_t>>& equippedItems);
 			void updateItemDurability(std::uint32_t accountId, std::uint32_t itemNumber, std::uint32_t newDurability);
 			void updateBattery(std::uint32_t accountId, std::uint32_t newBattery);
 			void updatePlayerStats(std::uint32_t accountId, const Main::Structures::AccountInfo& updatedAccountInfo);

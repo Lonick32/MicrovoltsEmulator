@@ -148,7 +148,8 @@ namespace Main
 			void setEquippedItems(const std::unordered_map<std::uint16_t, std::vector<EquippedItem>>& equippedItems);
 			std::optional<std::pair<std::uint16_t, std::uint64_t>>
 				addEnergyToItem(const Main::Structures::ItemSerialInfo& itemSerialInfo, std::uint32_t energyAdded);
-			std::vector<Main::ClientData::SingleWeaponDurabilityDamage> reduceEquippedItemsDurabilities(std::size_t characterID, std::uint32_t weaponRestriction);
+			std::pair<std::vector<Main::ClientData::SingleWeaponDurabilityDamage>,
+				std::vector<std::pair<std::uint32_t, std::uint64_t>>> reduceEquippedItemsDurabilities(std::size_t characterID, std::uint32_t weaponRestriction);
 			bool updateItemDurabilityByNumber(std::uint32_t itemNumber, std::uint32_t newDurability);
 			std::optional<std::uint16_t> getItemEnergy(const Main::Structures::ItemSerialInfo& itemSerialInfo) const;
 

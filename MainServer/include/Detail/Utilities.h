@@ -150,23 +150,6 @@ namespace Main
 			return rewards;
 		}
 
-		inline std::vector<Common::Enums::ItemType> getPartTypesWhereSetItemInfoTypeNotNull(const Common::ConstantDatabase::SetItemInfo& entry)
-		{
-			std::vector<Common::Enums::ItemType> itemTypes;
-			if (entry.si_hair != -1) itemTypes.push_back(Common::Enums::HAIR);
-			if (entry.si_face != -1) itemTypes.push_back(Common::Enums::FACE);
-			if (entry.si_top != -1) itemTypes.push_back(Common::Enums::DRESS);
-			if (entry.si_under != -1) itemTypes.push_back(Common::Enums::SKIRT);
-			if (entry.si_pants != -1) itemTypes.push_back(Common::Enums::LEGS);
-			if (entry.si_boots != -1)itemTypes.push_back(Common::Enums::BOOTS);
-			if (entry.si_arms != -1) itemTypes.push_back(Common::Enums::GLOVES);
-			if (entry.si_acce_A != -1) itemTypes.push_back(Common::Enums::ACC_UPPER);
-			if (entry.si_acce_B != -1) itemTypes.push_back(Common::Enums::ACC_BACK); // Check if this is correct
-			if (entry.si_acce_C != -1) itemTypes.push_back(Common::Enums::ACC_WAIST); // Same for this
-
-			return itemTypes;
-		}
-
 		inline bool isCsdItem(Common::Enums::ItemType itemType, std::uint32_t itemId)
 		{
 			if (itemType == Common::Enums::ACC_UPPER) return true;

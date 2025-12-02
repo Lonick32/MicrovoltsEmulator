@@ -1283,10 +1283,12 @@ namespace Main
 		void Session::reduceEquippedItemsDurability(std::uint32_t weaponRestriction)
 		{
 			const auto characterID = m_player.getAccountInfo().latestSelectedCharacter;
-			auto weaponDurabilityDamages = m_player.reduceEquippedItemsDurabilities(characterID, weaponRestriction);
+			auto cont = m_player.reduceEquippedItemsDurabilities(characterID, weaponRestriction);
+			auto weaponDurabilityDamages = cont.first;
+			auto weaponsToDamageIds = cont.second;
 
 			m_scheduler.addRepetitiveCallback(std::source_location::current(), m_player.getAccountID(), &Main::Persistence::PersistentDatabase::reduceDurability,
-				m_player.getAccountID(), m_player.getUnlimitedEquippedWeaponsFor(characterID));
+				m_player.getAccountID(), weaponsToDamageIds);
 
 			m_packet.setOrder(93);
 			m_packet.setOption(weaponDurabilityDamages.size());

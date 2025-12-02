@@ -640,14 +640,15 @@ namespace Main
 			}
 		}
 
-		std::vector<Main::ClientData::SingleWeaponDurabilityDamage> Player::reduceEquippedItemsDurabilities(
+		std::pair<std::vector<Main::ClientData::SingleWeaponDurabilityDamage>,
+			std::vector<std::pair<std::uint32_t, std::uint64_t>>> Player::reduceEquippedItemsDurabilities(
 			std::size_t characterID, std::uint32_t weaponRestrictionValue)
 		{
 			using namespace Common::Enums;
 
 			WeaponRestriction weaponRestriction = static_cast<WeaponRestriction>(weaponRestrictionValue);
 			std::vector<Main::ClientData::SingleWeaponDurabilityDamage> damages;
-
+			std::vector<std::pair<std::uint32_t, std::uint64_t>> idsAndItemNumbers;
 			const std::size_t startIndex = characterID * MAX_ITEMTYPE;
 			const std::size_t endIndex = startIndex + MAX_ITEMTYPE;
 
@@ -686,9 +687,10 @@ namespace Main
 
 				item.durability = newDurability;
 				damages.push_back(Main::ClientData::SingleWeaponDurabilityDamage{ item.serialInfo, reduction });
+				idsAndItemNumbers.push_back(std::pair{ item.id, item.serialInfo.itemNumber });
 			}
 
-			return damages;
+			return std::pair{ damages, idsAndItemNumbers };
 		}
 
 		bool Player::updateItemDurabilityByNumber(std::uint32_t itemNumber, std::uint32_t newDurability)
