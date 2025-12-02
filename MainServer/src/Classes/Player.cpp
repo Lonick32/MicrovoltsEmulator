@@ -687,7 +687,7 @@ namespace Main
 
 				item.durability = newDurability;
 				damages.push_back(Main::ClientData::SingleWeaponDurabilityDamage{ item.serialInfo, reduction });
-				idsAndItemNumbers.push_back(std::pair{ item.id, item.serialInfo.itemNumber });
+				idsAndItemNumbers.push_back(std::pair{ static_cast<std::uint32_t>(item.id), item.serialInfo.itemNumber });
 			}
 
 			return std::pair{ damages, idsAndItemNumbers };
