@@ -82,9 +82,16 @@ namespace Main
                     session->sendMessage("Note: You can only hold " + std::to_string(maxCoins) + " coins. Conversion limited to " + std::to_string(coinsToSpawn) + ".");
                 }
 
-                session->setAccountCoins(accountInfo.coins + coinsToSpawn);
-                session->sendCurrency();
-                session->sendMessage("Success");
+                const std::uint32_t rtSpent = coinsToSpawn * coinCost;
+                if (session->setAccountRockTotens(accountInfo.rockTotens - rtSpent) && session->setAccountCoins(accountInfo.coins + coinsToSpawn))
+                {
+                    session->sendCurrency();
+                    session->sendMessage("Success: converted " + std::to_string(rtSpent) + " RT into " + std::to_string(coinsToSpawn) + " coin(s).");
+                }
+                else
+                {
+                    session->sendMessage("Error while converting RT to Coins, please report this issue through a ticket.");
+                }
             }
         };
 
