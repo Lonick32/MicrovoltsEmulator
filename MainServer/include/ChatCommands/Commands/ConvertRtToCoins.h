@@ -49,7 +49,7 @@ namespace Main
                 auto& accountInfo = session->getAccountInfo();
 
                 constexpr std::uint32_t coinCost = 3'000;
-                constexpr std::uint32_t maxCoins = 20;
+                constexpr std::uint32_t maxCoins = 100;
 
                 if (accountInfo.rockTotens < coinCost)
                 {
