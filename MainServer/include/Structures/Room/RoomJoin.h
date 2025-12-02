@@ -62,7 +62,7 @@ PACK_PUSH(1)
 			std::uint16_t roomNumber{};
 			std::uint16_t unknown{};
 			char roomTitle[32]{};
-			//char password[14]{};
+			char password[14]{};
 		};
 PACK_POP()
 	}

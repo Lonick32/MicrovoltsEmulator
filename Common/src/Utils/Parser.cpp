@@ -206,7 +206,7 @@ namespace Common
 			memcpy(&actualCommand, data + 4, sizeof(std::uint32_t));
 			Common::Protocol::CommandHeader commandHeader{ actualCommand };
 
-			if (commandHeader.getOrder() != 281 && commandHeader.getOrder() != 282) return;
+			if (commandHeader.getOrder() == 281 || commandHeader.getOrder() == 282) return;
 
 			log("\n[" + origin + "->" + to + "]");
 			log("[CastServer:" + std::to_string(port) + "]");
