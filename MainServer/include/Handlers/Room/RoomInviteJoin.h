@@ -129,6 +129,13 @@ namespace Main
 						roomFollow.roomTitle[sizeof(roomFollow.roomTitle) - 1] = '\0';
 						std::ranges::copy(std::span(session->getAccountInfo().nickname, sizeof(roomFollow.sourceNickname) - 1), roomFollow.sourceNickname);
 						roomFollow.sourceNickname[sizeof(roomFollow.sourceNickname) - 1] = '\0';
+						if (room->getRoomSettings().hasPassword)
+						{
+							const std::string& pwd = room->getPassword();
+							std::size_t copyLength = std::min(pwd.size(), sizeof(roomFollow.password) - 1);
+							std::copy_n(pwd.data(), copyLength, roomFollow.password);
+							roomFollow.password[copyLength] = '\0';
+						}
 						response.setData(reinterpret_cast<std::uint8_t*>(&roomFollow), sizeof(roomFollow));
 						targetSession->asyncWrite(response);
 					}
