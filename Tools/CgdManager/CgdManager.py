@@ -166,7 +166,7 @@ class CgdEditor(QMainWindow):
             return
         result = self.cgdManager.createDipFromCdbs(password)
         if result.get("success"):
-            showToast("cgd.dip archive exported successfully")
+            showToast(self, "cgd.dip archive exported successfully")
         else:
             QMessageBox.critical(self, "Error", result.get("error"))
 
