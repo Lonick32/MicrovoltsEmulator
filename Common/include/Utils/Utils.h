@@ -90,9 +90,8 @@ namespace Common
 			if (entry.si_hair != -1) itemTypes.push_back(Common::Enums::HAIR);
 			if (entry.si_face != -1) itemTypes.push_back(Common::Enums::FACE);
 			if (entry.si_top != -1) itemTypes.push_back(Common::Enums::DRESS);
-			if (entry.si_under != -1) itemTypes.push_back(Common::Enums::SKIRT);
-			if (character == Common::Enums::Naomi && entry.si_pants != -1) itemTypes.push_back(Common::Enums::LEGS);
-			if (character != Common::Enums::Naomi) itemTypes.push_back(Common::Enums::LEGS);
+			if (entry.si_under != -1) itemTypes.push_back(Common::Enums::LEGS);
+			if (entry.si_pants != -1) itemTypes.push_back(Common::Enums::SKIRT);
 			if (entry.si_boots != -1) itemTypes.push_back(Common::Enums::BOOTS);
 			if (entry.si_arms != -1) itemTypes.push_back(Common::Enums::GLOVES);
 			if (entry.si_acce_A != -1) itemTypes.push_back(Common::Enums::ACC_UPPER);
