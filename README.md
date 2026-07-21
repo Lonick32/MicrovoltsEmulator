@@ -64,7 +64,7 @@
   - [7.1.3 Using the Updater](https://github.com/Lonick32/MicrovoltsEmulator/blob/mv1.1_2.0/doc/updater_overview.md)
 - [7.2 Changing the client version (using the client version tool)](https://github.com/Lonick32/MicrovoltsEmulator/blob/mv1.1_2.0/doc/client_version_tool.md)
 - [7.3 Changing the CGD password (using the password tool)](https://github.com/Lonick32/MicrovoltsEmulator/blob/mv1.1_2.0/doc/password_updater.md)
-- [7.4 CGD Archive Manager Tool](https://github.com/Lonick32/ToyBattlesHQ/blob/toybattles_mvsurge/doc/cgd_manager.md)     <sub><img width="35" height="50" alt="new" src="https://github.com/user-attachments/assets/be690f81-7566-42ed-815a-e4683898bbd7" /></sub>
+- [7.4 CGD Archive Manager Tool](https://github.com/Lonick32/MicrovoltsEmulator/blob/toybattles_mvsurge/doc/cgd_manager.md)     <sub><img width="35" height="50" alt="new" src="https://github.com/user-attachments/assets/be690f81-7566-42ed-815a-e4683898bbd7" /></sub>
 
 
 
@@ -83,6 +83,4 @@
 
 
 ## Contacts
-- For info, contributions or bug reports related to the emulator, please open an issue on this repository.
-- For general inquiries, contact us at support@toybattles.net
-- For ToyBattles related issues, contact us on [our discord server](https://discord.gg/toybattles) or via https://toybattles.net/support
+Rest in Peace
